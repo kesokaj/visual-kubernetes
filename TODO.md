@@ -7,7 +7,7 @@
 
 ## Now
 
-No plan is open yet. The next session writes the phased plan record (`fyr-feature`) from the newest handoff.
+No plan is open yet. The next session writes the phased plan record (`fyr-feature`) from HANDOFF-2026-11-09-1543-scaffolded-plan-next.
 
 ## Next
 
