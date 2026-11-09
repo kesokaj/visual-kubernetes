@@ -1,0 +1,23 @@
+# One-shot probe Pod on kind; the image is side-loaded by test/kind/probe.sh (never pulled).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: visual-kubernetes-probe
+  namespace: visual-kubernetes
+spec:
+  serviceAccountName: visual-kubernetes
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: probe
+      image: visual-kubernetes:dev
+      imagePullPolicy: Never
+      args: [probe]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]

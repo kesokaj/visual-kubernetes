@@ -1,0 +1,14 @@
+# kind fixture for integration tests (GUIDE-testing § 3). serverTLSBootstrap makes each kubelet
+# request a serving cert from the cluster CA, so the binary can verify kubelet TLS (PRD R8)
+# instead of trusting kind's self-signed kubelet certs.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: visual-kubernetes
+kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    serverTLSBootstrap: true
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

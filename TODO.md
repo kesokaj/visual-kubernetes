@@ -7,22 +7,18 @@
 
 ## Now
 
-Phase 0 — Spike, kubelet client and capability probe · PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual · goal: prove which built-in sources the in-cluster binary can read on kind, with kubelet TLS verified.
+Phase 1 — Model and watches · PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual · goal: informers feed an in-memory model (entity ids, apps, satellites, folding) and fixturegen writes the four replay streams. Phase 0 done 2026-11-09.
 
-- [ ] kind installed on Colima
-- [ ] `test/kind/config.yaml` + `test/kind/up.sh` (serverTLSBootstrap, CSR approval, metrics-server)
-- [ ] `internal/kubelet` Summary client with `TestClientRefusesUnverifiedCert` (R8)
-- [ ] `probe` subcommand, one probe per source
-- [ ] Minimal Dockerfile; probe run in-cluster on kind
-- [ ] Four ADRs (SSE, rendering, force web, kubelet direct)
-- [ ] GUIDE-testing filled
+- [ ] Informers for the named groups (Secrets excluded, forbidden kinds skipped) feeding `internal/model`
+- [ ] Model: entity ids, app grouping and satellites, filterGroup, edges, `counter/*` folding
+- [ ] `test/fixturegen` writes the four `test/fixtures/streams/*.ndjson`, byte-identical on rerun
 - [ ] Checkpoint
 
 ## Next
 
-- Phase 1 — Model and watches.
 - Phase 2 — Sources and SSE stream.
 - Phase 3 — Spider-web page shell.
+- Phase 4 — Panel, encodings, folding and performance.
 
 ## Backlog
 

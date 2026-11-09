@@ -6,11 +6,21 @@
 
 ## Setup Commands
 
-No code exists yet. The first plan phase lands the build, run and test commands here. The planned stack is one Go binary (`cmd/visual-kubernetes`, client-go informers) that serves an embedded TanStack Start UI over SSE.
+One Go module (`github.com/kesokaj/visual-kubernetes`, go 1.27, client-go v0.37). Phase 0 ships only the `probe` subcommand; the UI server (embedded TanStack Start over SSE) lands in Phase 2.
+
+```bash
+go build ./...
+go vet ./... && go test -race ./...
+test/kind/up.sh        # kind cluster on Colima; kubeconfig in .agents/scratch/kind/kubeconfig
+go run ./cmd/visual-kubernetes probe --kubeconfig .agents/scratch/kind/kubeconfig
+test/kind/probe.sh     # image build + kind load + in-cluster probe
+```
+
+`visual-kubernetes probe` prints `<source> ok|missing|denied|unreachable|error <detail>` for discovery, leases, events, endpointslices, metrics.k8s.io, kubelet, apiserver-metrics, readyz and hubble-relay, and exits 0 whatever the sources report (1 only when no client can be built, 2 on usage). Always pass `--kubeconfig` locally: without it the standard loading rules pick the operator's current context.
 
 ## Architecture
 
-There is no code yet; the agreed shape is in `SDD.md` and the open plan record PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual. The approved visual reference is `design/mockup-v3.html`: a force-directed "spider web" on white, apps as bubbles with pods hanging around them, official Kubernetes icons, a small filter pill (all on by default), and click for config, logs and metrics. ADRs: `fyr record list --kind adr`.
+There is no UI code yet; the agreed shape is in `SDD.md` and the open plan record PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual. The approved visual reference is `design/mockup-v3.html`: a force-directed "spider web" on white, apps as bubbles with pods hanging around them, official Kubernetes icons, a small filter pill (all on by default), and click for config, logs and metrics. ADRs: `fyr record list --kind adr`.
 
 ## Project-Specific Standards
 
@@ -21,7 +31,7 @@ There is no code yet; the agreed shape is in `SDD.md` and the open plan record P
 
 ## Testing
 
-No tests yet. The tiers are planned as: Go unit with a fake clientset and `-race`, kind integration, and Playwright against the binary with a recorded event stream. The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
+Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`. Playwright against the binary with a recorded event stream arrives in Phase 3. The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
 
 ## Deploy
 
@@ -34,6 +44,10 @@ No tests yet. The tiers are planned as: Go unit with a fake clientset and `-race
 | Path | Purpose |
 |------|---------|
 | `design/mockup-v3.html` | Approved visual reference (simulated data, self-contained) |
+| `cmd/visual-kubernetes/` | The binary's entry point (`probe` subcommand in Phase 0) |
+| `internal/kubelet/` | Kubelet Summary client, TLS always verified (R8, ADR-005) |
+| `internal/probe/` | One-shot capability probe and the five source states |
+| `test/kind/` | kind fixture (`up.sh`), probe RBAC and Pod, `probe.sh` |
 | `PRD.md` | What and why: problem, goals, the non-negotiable requirements |
 | `SDD.md` | How the parts fit: components, flows, decisions |
 | `TDD.md` | How each part is built and tested |
