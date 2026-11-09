@@ -22,11 +22,15 @@ flowchart LR
 
 ## Components
 
-No code yet. The first component the plan builds is listed below; the rest land with the plan record.
+No code yet. The components below are planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
 
 | ID | Component | Responsibility | Satisfies |
 |---|---|---|---|
-| M1 | `cmd/visual-kubernetes` (planned) | Watch the cluster read-only, keep the live model, serve the embedded UI and an SSE stream | — |
+| M1 | `cmd/visual-kubernetes` + `internal/watch`, `internal/model`, `internal/sources` (planned) | Watch the cluster read-only, read metrics sources, keep the live model | R1, R2, R4, R8, S2, S4 |
+| M2 | `internal/stream` + `internal/replay` (planned) | Serve SSE deltas with resume, the object/log endpoints and causal chains | R5 |
+| M3 | `web/` (planned) | The embedded spider-web page, filter pill, click panel, replay keys | R5, R6, R9, R10, S5 |
+| M4 | `internal/hubble` (planned) | Optional Hubble Relay flows | S3 |
+| M5 | `deploy/`, `Dockerfile`, `examples/` (planned) | One-command install, ClusterIP access, demo scenarios, local binary run | R3, R7, S1, S6, S7 |
 
 ## Flows
 
@@ -53,8 +57,22 @@ One Deployment plus a ClusterRole, applied with one `kubectl apply -f install.ya
 
 ## Trace
 
-PRD.md has no requirement items yet (`/fyr-requirements` elicits them); rows land with them.
-
 | Requirement | Components |
 |---|---|
-| — | — |
+| R1 | M1, M5 |
+| R2 | M1, M5 |
+| R3 | M5 |
+| R4 | M1 |
+| R5 | M2, M3 |
+| R6 | M3 |
+| R7 | M5 |
+| R8 | M1 |
+| R9 | M3 |
+| R10 | M3 |
+| S1 | M5 |
+| S2 | M1 |
+| S3 | M4 |
+| S4 | M1 |
+| S5 | M3 |
+| S6 | M5 |
+| S7 | M5 |

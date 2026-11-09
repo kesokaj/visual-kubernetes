@@ -16,6 +16,22 @@ Implements: M1 · Spec: SPEC-visual-kubernetes-stream (none yet: the plan writes
 - **Errors:** not yet. Planned: a missing optional source degrades the view and never crashes the app.
 - **Configuration:** not yet. Planned: in-cluster config, or a kubeconfig when run locally.
 
+## T2 — stream and replay
+
+Implements: M2 · Planned in PLAN-2026-11-09-1906 Phases 1 and 4 (SSE events, `/api/objects`, `/api/logs`, causal chains). Not built yet.
+
+## T3 — web page
+
+Implements: M3 · Planned in Phases 2–4 (`web/`, SVG + d3-force, filter pill, panel, replay keys). Not built yet.
+
+## T4 — Hubble flows
+
+Implements: M4 · Planned in Phase 5 (auto-detected Relay, `GetFlows`). Not built yet.
+
+## T5 — packaging and examples
+
+Implements: M5 · Planned in Phases 4 and 6 (`deploy/install.yaml`, kube-system variant, Dockerfile, `examples/`). Not built yet.
+
 ## Data model
 
 No stored data: the live model and a short timeline are held in memory only.
@@ -33,3 +49,7 @@ No build yet. See the `DEPLOY-local` record.
 | Component | Section | Verified by |
 |---|---|---|
 | M1 | T1 | not yet |
+| M2 | T2 | not yet |
+| M3 | T3 | not yet |
+| M4 | T4 | not yet |
+| M5 | T5 | not yet |
