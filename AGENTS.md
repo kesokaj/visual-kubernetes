@@ -1,0 +1,41 @@
+# AGENTS.md
+
+## Project Overview
+
+`visual-kubernetes` is a read-only, real-time visualizer of a Kubernetes cluster's internals on one white page, built for live teaching demos. Presenters use it to show what happens when someone adds a Deployment, scales with HPA/VPA, adds worker nodes, or sends traffic between services. It installs as one Deployment named `visual-kubernetes`. The operator's ask places it in `kube-system`; the open plan decides whether a dedicated namespace is the default. It works on any conformant cluster that grants its read-only RBAC. It uses built-in sources first (watches, Events, Leases, metrics.k8s.io, kubelet stats, API server `/metrics`). Optional traffic sources (Hubble Relay, OTel) are auto-detected, never installed. The app never changes a cluster.
+
+## Setup Commands
+
+No code exists yet. The first plan phase lands the build, run and test commands here. The planned stack is one Go binary (`cmd/visual-kubernetes`, client-go informers) that serves an embedded TanStack Start UI over SSE.
+
+## Architecture
+
+There is no code yet; the agreed shape is in `SDD.md` and the open plan record (`fyr record list --kind plan --open`). The approved visual reference is `design/mockup-v3.html`: a force-directed "spider web" on white, apps as bubbles with pods hanging around them, official Kubernetes icons, a small filter pill (all on by default), and click for config, logs and metrics. ADRs: `fyr record list --kind adr`.
+
+## Project-Specific Standards
+
+- **Read-only, always:** the app gets get/list/watch RBAC only; it never writes to a cluster and never enables cluster features. Secrets are excluded except named exceptions the PRD lists.
+- **Install stays one command:** any change that adds a step to installation needs the operator's approval.
+- **Never touch the operator's clusters** (`exact-loon-6dim` included) unless the operator asks in their own turn. Local integration tests use kind on Colima.
+- **UI:** white page, text ≥ 12px, no external network dependencies at runtime (the image serves every asset).
+
+## Testing
+
+No tests yet. The tiers are planned as: Go unit with a fake clientset and `-race`, kind integration, and Playwright against the binary with a recorded event stream. The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
+
+## Deploy
+
+- Local: the binary against your kubeconfig, or kind on Colima. See `DEPLOY-local`.
+- GCP: image in Artifact Registry on `exact-loon-6dim`, demo cluster on GKE. See `DEPLOY-gcp`; nothing deploys without the operator's go.
+- Remote: not applicable (`DEPLOY-remote`).
+
+## Key Files
+
+| Path | Purpose |
+|------|---------|
+| `design/mockup-v3.html` | Approved visual reference (simulated data, self-contained) |
+| `PRD.md` | What and why: problem, goals, the non-negotiable requirements |
+| `SDD.md` | How the parts fit: components, flows, decisions |
+| `TDD.md` | How each part is built and tested |
+| `TODO.md` | The active phase's tasks, the next phases, the backlog |
+| `.agents/` | Project customizations and `scratch/` (trail records live in `fyr`'s brain store; `fyr record export` writes `.agents/trail.jsonl` on demand) |

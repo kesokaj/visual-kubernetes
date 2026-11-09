@@ -1,0 +1,4 @@
+.DS_Store
+.agents/memory
+.agents/scratch/*
+!.agents/scratch/.gitkeep
