@@ -20,7 +20,9 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ns=visual-kubernetes
 testns=vk-nettest
 curl_image=curlimages/curl:8.11.1
-ctx="$(kubectl config current-context)"
+# The context name becomes a directory: keep it to safe characters (no "/" or "..").
+ctx="$(kubectl config current-context | tr -c "A-Za-z0-9._-\n" "_")"
+ctx="${ctx//../_}"
 out="$repo/.agents/scratch/install-check/$ctx"
 mkdir -p "$out"
 failed=0
@@ -34,8 +36,16 @@ kubectl -n "$ns" rollout status deploy/visual-kubernetes --timeout=180s && pass 
 
 kubectl -n "$ns" port-forward svc/visual-kubernetes 18090:80 >"$out/port-forward.log" 2>&1 &
 pf=$!
+policy_deleted=0
+restore_policy() {
+  grep -v -e '^  resourceVersion:' -e '^  uid:' -e '^  creationTimestamp:' "$out/policy.yaml" | kubectl apply -f - >/dev/null
+}
 cleanup() {
   kill "$pf" 2>/dev/null || true
+  # An interrupted must-fail run must not leave the namespace open.
+  if [[ "$policy_deleted" == 1 ]]; then
+    restore_policy || echo "WARN could not restore the NetworkPolicy; re-apply $out/policy.yaml" >&2
+  fi
   kubectl delete namespace "$testns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -49,7 +59,7 @@ grep -q '^event: snapshot' "$out/stream.txt" && pass "stream snapshot" || fail "
 sa="system:serviceaccount:$ns:visual-kubernetes"
 # Positive control first: a wrong --as would answer "no" to everything below.
 [[ "$(kubectl auth can-i list pods --as="$sa" 2>/dev/null || true)" == yes ]] && pass "can-i list pods: yes" || fail "can-i list pods"
-for v in "create deployments" "delete pods" "list secrets" "get secrets" "patch nodes" "create pods --subresource=exec" "get nodes --subresource=proxy" "get pods --subresource=exec"; do
+for v in "create deployments" "delete pods" "list secrets" "get secrets" "patch nodes" "create pods --subresource=exec" "get pods --subresource=exec" "get pods --subresource=attach" "get pods --subresource=portforward" "create pods --subresource=portforward" "get nodes --subresource=proxy"; do
   # shellcheck disable=SC2086  # $v is "<verb> <resource>", split on purpose
   a="$(kubectl auth can-i $v --as="$sa" 2>/dev/null || true)"
   [[ "$a" == no ]] && pass "can-i $v: no" || fail "can-i $v: $a"
@@ -59,21 +69,26 @@ kubectl -n "$ns" logs deploy/visual-kubernetes >"$out/logs.txt" 2>&1 || true
 n="$(grep -c '"level":"ERROR"' "$out/logs.txt" || true)"
 [[ "$n" == 0 ]] && pass "no ERROR log lines" || fail "$n ERROR log lines"
 
-# Ingress from another namespace: blocked means curl gets no answer within 5 s. A previous
-# run's cleanup does not wait, so first let any terminating test namespace finish.
+# Ingress from another namespace: blocked means curl itself reports no answer within 5 s
+# (http_code 000); any HTTP status, or no output at all (the exec failed), is not "blocked".
+# A previous run's cleanup does not wait, so first let any terminating test namespace finish.
 kubectl delete namespace "$testns" --ignore-not-found --wait=true --timeout=120s >/dev/null
 kubectl create namespace "$testns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$testns" run nettest --image="$curl_image" --restart=Never --command -- sleep 900 >/dev/null
 kubectl -n "$testns" wait --for=condition=Ready pod/nettest --timeout=120s >/dev/null
 svc_ip="$(kubectl -n "$ns" get svc visual-kubernetes -o jsonpath='{.spec.clusterIP}')"
 pod_ip="$(kubectl -n "$ns" get pod -l app.kubernetes.io/name=visual-kubernetes -o jsonpath='{.items[0].status.podIP}')"
-reach() { kubectl -n "$testns" exec nettest -- curl -s -m 5 -o /dev/null -w '%{http_code}' "$1" 2>/dev/null || true; }
-# expect STATE: "blocked" (no answer) or "open" (200), retried for up to 30 s while policy settles.
+reach() { kubectl -n "$testns" exec nettest -- curl -sk -m 5 -o /dev/null -w '%{http_code}' "$1" 2>/dev/null || true; }
+# Positive control: the test pod reaches something outside the app's namespace, so a
+# "blocked" below means the policy, not a broken exec or pod network. Any HTTP status counts.
+ctl="$(reach https://kubernetes.default.svc/livez)"
+[[ "$ctl" =~ ^[1-5][0-9][0-9]$ ]] && pass "nettest control reaches the API server (got $ctl)" || fail "nettest control: got '${ctl:-none}'"
+# expect STATE: "blocked" (000) or "open" (200), retried for up to 30 s while policy settles.
 expect() {
   local state="$1" url="$2" got=""
   for _ in $(seq 1 6); do
     got="$(reach "$url")"
-    if [[ "$state" == blocked && "$got" != 200 ]] || [[ "$state" == open && "$got" == 200 ]]; then
+    if [[ "$state" == blocked && "$got" == 000 ]] || [[ "$state" == open && "$got" == 200 ]]; then
       pass "ingress $url $state (got '${got:-none}')"
       return
     fi
@@ -86,10 +101,12 @@ expect blocked "http://$pod_ip:8080/healthz"
 
 if [[ "${VK_MUST_FAIL:-0}" == 1 ]]; then
   kubectl -n "$ns" get networkpolicy visual-kubernetes-deny-ingress -o yaml >"$out/policy.yaml"
+  policy_deleted=1
   kubectl -n "$ns" delete networkpolicy visual-kubernetes-deny-ingress >/dev/null
   expect open "http://$svc_ip/healthz"
   expect open "http://$pod_ip:8080/healthz"
-  grep -v -e '^  resourceVersion:' -e '^  uid:' -e '^  creationTimestamp:' "$out/policy.yaml" | kubectl apply -f - >/dev/null
+  restore_policy
+  policy_deleted=0
   expect blocked "http://$svc_ip/healthz"
   expect blocked "http://$pod_ip:8080/healthz"
 fi

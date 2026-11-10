@@ -72,6 +72,8 @@ func TestInstallRBACIsReadOnly(t *testing.T) {
 		"/* nonResourceURL": addRule(rbacv1.PolicyRule{NonResourceURLs: []string{"/*"}, Verbs: []string{"get"}}),
 		"nodes/proxy":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes/proxy"}, Verbs: []string{"get"}}),
 		"pods/exec":         addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/exec"}, Verbs: []string{"get"}}),
+		"pods/attach":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/attach"}, Verbs: []string{"get"}}),
+		"pods/portforward":  addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/portforward"}, Verbs: []string{"get"}}),
 		"aggregationRule": func(objs []runtime.Object) []runtime.Object {
 			role(objs).AggregationRule = &rbacv1.AggregationRule{ClusterRoleSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"rbac.example/aggregate": "true"}}}}
 			return objs

@@ -95,7 +95,9 @@ func readOnlyViolations(rules []rbacv1.PolicyRule) []string {
 				bad = append(bad, "secrets without the one named resourceName")
 			case res == "secrets" && !reflect.DeepEqual(r.Verbs, []string{"get"}):
 				bad = append(bad, "secrets with list or watch")
-			case strings.HasSuffix(res, "/proxy"), strings.HasSuffix(res, "/exec"), strings.HasSuffix(res, "/attach"):
+			// get on these upgrades to a WebSocket stream into the pod or node, so a read
+			// verb still opens a shell, a port or a proxy.
+			case strings.HasSuffix(res, "/proxy"), strings.HasSuffix(res, "/exec"), strings.HasSuffix(res, "/attach"), strings.HasSuffix(res, "/portforward"):
 				bad = append(bad, "subresource "+res)
 			}
 		}

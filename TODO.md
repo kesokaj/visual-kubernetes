@@ -27,6 +27,7 @@ Phase 5 — Teaching replay and scenarios · PLAN-2026-11-09-1906-plan-visual-ku
 - OTLP receiver as a traffic source (added 2026-11-09, grill N4/row 6).
 - Cloud Audit Logs stream for real API-check steps (added 2026-11-09, grill Q7).
 - Elliptical, label-aware spacing to stop label overlaps (added 2026-11-09, mockup v3 nit).
-- `test/kind/serve.sh`: scripted in-cluster serve check (port-forward + curl `/healthz`, `/api/stream`) replacing the manual Phase 2 run; fold into Phase 7's install e2e (added 2026-11-10, Phase 2 review finding 2).
+- ~~`test/kind/serve.sh`~~ done as `test/kind/install-check.sh` (2026-11-10, preflight fixes); the Playwright `live.spec.ts` stays a Phase 7 box.
 - `--allowed-host` flag so a DNS name in front of the LoadBalancer passes the Host guard; not in v1 (added 2026-11-10, ADR-008 decision F, plan D39).
 - IAP or an authenticated Ingress in front of the UI, for v2 (added 2026-11-10, ADR-008 rejected options).
+- Optional egress NetworkPolicy examples per CNI in the README (API server, kubelets, Hubble Relay); not in the default install, which must stay portable (added 2026-11-10, REVIEW-2026-11-10-1559-security-round-2 finding 1).
