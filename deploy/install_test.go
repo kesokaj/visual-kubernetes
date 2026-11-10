@@ -1,172 +1,191 @@
 // Package deploy holds the install manifests; these tests pin what PRD R1, R2, R7 and S1
-// require of them, so an edit that widens RBAC or exposes the page fails here first.
+// require of them, so an edit that widens RBAC or exposes the page fails here first. Every
+// check runs on the real file (must pass) and on mutated copies of it (must fail).
 package deploy
 
 import (
-	"bytes"
-	"os"
 	"reflect"
-	"regexp"
-	"slices"
-	"strings"
 	"testing"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-const (
-	installPath  = "install.yaml"
-	probeRBAC    = "../test/kind/probe-rbac.yaml"
-	imageRepo    = "europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes"
-	secretsAllow = "hubble-relay-client-certs"
-)
+type mutation func(objs []runtime.Object) []runtime.Object
 
-// releaseImage is the repository plus a semver tag; a release asset may add an @sha256 digest.
-var releaseImage = regexp.MustCompile(`^` + regexp.QuoteMeta(imageRepo) + `:v\d+\.\d+\.\d+(@sha256:[0-9a-f]{64})?$`)
-
-func decodeFile(t *testing.T, path string) []runtime.Object {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var objs []runtime.Object
-	for _, doc := range bytes.Split(b, []byte("\n---\n")) {
-		if len(bytes.TrimSpace(stripComments(doc))) == 0 {
-			continue
-		}
-		obj, _, err := scheme.Codecs.UniversalDeserializer().Decode(doc, nil, nil)
-		if err != nil {
-			t.Fatalf("%s: decoding a document: %v", path, err)
-		}
-		objs = append(objs, obj)
-	}
-	return objs
+func role(objs []runtime.Object) *rbacv1.ClusterRole { return only[*rbacv1.ClusterRole](objs)[0] }
+func binding(objs []runtime.Object) *rbacv1.ClusterRoleBinding {
+	return only[*rbacv1.ClusterRoleBinding](objs)[0]
+}
+func policy(objs []runtime.Object) *networkingv1.NetworkPolicy {
+	return only[*networkingv1.NetworkPolicy](objs)[0]
+}
+func service(objs []runtime.Object) *corev1.Service { return only[*corev1.Service](objs)[0] }
+func container(objs []runtime.Object) *corev1.Container {
+	dep, _ := appPod(objs)
+	return &dep.Spec.Template.Spec.Containers[0]
 }
 
-func stripComments(doc []byte) []byte {
-	var out [][]byte
-	for _, line := range bytes.Split(doc, []byte("\n")) {
-		if !bytes.HasPrefix(bytes.TrimSpace(line), []byte("#")) {
-			out = append(out, line)
-		}
+func addRule(r rbacv1.PolicyRule) mutation {
+	return func(objs []runtime.Object) []runtime.Object {
+		role(objs).Rules = append(role(objs).Rules, r)
+		return objs
 	}
-	return bytes.Join(out, []byte("\n"))
 }
 
-func only[T runtime.Object](objs []runtime.Object) []T {
-	var out []T
+func without[T runtime.Object](objs []runtime.Object) []runtime.Object {
+	var out []runtime.Object
 	for _, o := range objs {
-		if v, ok := o.(T); ok {
-			out = append(out, v)
+		if _, ok := o.(T); !ok {
+			out = append(out, o)
 		}
 	}
 	return out
 }
 
-// readOnlyViolations lists every rule that could write, read Secrets broadly, or reach
-// the kubelet's proxy (R1, R2).
-func readOnlyViolations(rules []rbacv1.PolicyRule) []string {
-	var bad []string
-	for _, r := range rules {
-		for _, v := range r.Verbs {
-			if !slices.Contains([]string{"get", "list", "watch"}, v) {
-				bad = append(bad, "verb "+v)
-			}
-		}
-		for _, field := range [][]string{r.APIGroups, r.Resources, r.ResourceNames, r.NonResourceURLs} {
-			if slices.Contains(field, "*") {
-				bad = append(bad, "wildcard in "+strings.Join(field, ","))
-			}
-		}
-		for _, res := range r.Resources {
-			switch {
-			case res == "secrets" && !reflect.DeepEqual(r.ResourceNames, []string{secretsAllow}):
-				bad = append(bad, "secrets without the one named resourceName")
-			case res == "secrets" && !reflect.DeepEqual(r.Verbs, []string{"get"}):
-				bad = append(bad, "secrets with list or watch")
-			case strings.HasSuffix(res, "/proxy"), strings.HasSuffix(res, "/exec"), strings.HasSuffix(res, "/attach"):
-				bad = append(bad, "subresource "+res)
-			}
-		}
+// checkBothWays runs check on install.yaml (no violation allowed) and on each mutated copy
+// (at least one violation required). The mutants assume the file's shape, so a failing file
+// stops the test before them.
+func checkBothWays(t *testing.T, check func([]runtime.Object) []string, mutants map[string]mutation) {
+	t.Helper()
+	if bad := check(decodeFile(t, installPath)); len(bad) > 0 {
+		t.Fatalf("install.yaml: %v", bad)
 	}
-	return bad
-}
-
-func TestInstallManifestReadOnly(t *testing.T) {
-	objs := decodeFile(t, installPath)
-	roles := only[*rbacv1.ClusterRole](objs)
-	if len(roles) != 1 {
-		t.Fatalf("ClusterRoles = %d, want 1", len(roles))
-	}
-	if n := len(only[*rbacv1.Role](objs)); n != 0 {
-		t.Errorf("Roles = %d, want 0 (all access is the one read-only ClusterRole)", n)
-	}
-	if bad := readOnlyViolations(roles[0].Rules); len(bad) > 0 {
-		t.Errorf("ClusterRole is not read-only: %v", bad)
+	for name, mutate := range mutants {
+		if bad := check(mutate(decodeFile(t, installPath))); len(bad) == 0 {
+			t.Errorf("must-fail %q: no violation reported", name)
+		}
 	}
 }
 
-// TestReadOnlyCheckFailsOnMutations is the must-fail side of TestInstallManifestReadOnly.
-func TestReadOnlyCheckFailsOnMutations(t *testing.T) {
-	cases := map[string]rbacv1.PolicyRule{
-		"write verb":     {APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "patch"}},
-		"all secrets":    {APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"}},
-		"secret listing": {APIGroups: []string{""}, Resources: []string{"secrets"}, ResourceNames: []string{secretsAllow}, Verbs: []string{"get", "list"}},
-		"wildcard":       {APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}},
-		"nodes/proxy":    {APIGroups: []string{""}, Resources: []string{"nodes/proxy"}, Verbs: []string{"get"}},
-		"pods/exec":      {APIGroups: []string{""}, Resources: []string{"pods/exec"}, Verbs: []string{"get"}},
-	}
-	for name, r := range cases {
-		if bad := readOnlyViolations([]rbacv1.PolicyRule{r}); len(bad) == 0 {
-			t.Errorf("%s: no violation reported", name)
-		}
-	}
+func TestInstallRBACIsReadOnly(t *testing.T) {
+	checkBothWays(t, rbacViolations, map[string]mutation{
+		"write verb":        addRule(rbacv1.PolicyRule{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "patch"}}),
+		"all secrets":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"}}),
+		"secret listing":    addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"secrets"}, ResourceNames: []string{secretsAllow}, Verbs: []string{"get", "list"}}),
+		"bare wildcard":     addRule(rbacv1.PolicyRule{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}}),
+		"nodes/* wildcard":  addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes/*"}, Verbs: []string{"get"}}),
+		"/* nonResourceURL": addRule(rbacv1.PolicyRule{NonResourceURLs: []string{"/*"}, Verbs: []string{"get"}}),
+		"nodes/proxy":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes/proxy"}, Verbs: []string{"get"}}),
+		"pods/exec":         addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/exec"}, Verbs: []string{"get"}}),
+		"aggregationRule": func(objs []runtime.Object) []runtime.Object {
+			role(objs).AggregationRule = &rbacv1.AggregationRule{ClusterRoleSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"rbac.example/aggregate": "true"}}}}
+			return objs
+		},
+		"binding to cluster-admin": func(objs []runtime.Object) []runtime.Object {
+			binding(objs).RoleRef.Name = "cluster-admin"
+			return objs
+		},
+		"second binding": func(objs []runtime.Object) []runtime.Object {
+			extra := binding(objs).DeepCopy()
+			extra.Name, extra.RoleRef.Name = "extra", "cluster-admin"
+			return append(objs, extra)
+		},
+		"binding to another subject": func(objs []runtime.Object) []runtime.Object {
+			binding(objs).Subjects = append(binding(objs).Subjects, rbacv1.Subject{Kind: rbacv1.GroupKind, Name: "system:authenticated"})
+			return objs
+		},
+		"extra Role": func(objs []runtime.Object) []runtime.Object {
+			return append(objs, &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: appName}})
+		},
+		"no ClusterRole": without[*rbacv1.ClusterRole],
+	})
+}
+
+func TestInstallDeniesAllIngress(t *testing.T) {
+	checkBothWays(t, ingressViolations, map[string]mutation{
+		"no NetworkPolicy": without[*networkingv1.NetworkPolicy],
+		"allow-all ingress rule": func(objs []runtime.Object) []runtime.Object {
+			policy(objs).Spec.Ingress = []networkingv1.NetworkPolicyIngressRule{{}}
+			return objs
+		},
+		"egress only": func(objs []runtime.Object) []runtime.Object {
+			policy(objs).Spec.PolicyTypes = []networkingv1.PolicyType{networkingv1.PolicyTypeEgress}
+			return objs
+		},
+		"selects other pods": func(objs []runtime.Object) []runtime.Object {
+			policy(objs).Spec.PodSelector = metav1.LabelSelector{MatchLabels: map[string]string{"app": "other"}}
+			return objs
+		},
+		"other namespace": func(objs []runtime.Object) []runtime.Object {
+			policy(objs).Namespace = "default"
+			return objs
+		},
+		"second policy allows port 8080": func(objs []runtime.Object) []runtime.Object {
+			allow := policy(objs).DeepCopy()
+			port := intstr.FromInt32(8080)
+			allow.Name = "allow"
+			allow.Spec.Ingress = []networkingv1.NetworkPolicyIngressRule{{Ports: []networkingv1.NetworkPolicyPort{{Port: &port}}}}
+			return append(objs, allow)
+		},
+	})
 }
 
 func TestInstallServiceIsClusterIP(t *testing.T) {
-	svcs := only[*corev1.Service](decodeFile(t, installPath))
-	if len(svcs) != 1 {
-		t.Fatalf("Services = %d, want 1", len(svcs))
-	}
-	if typ := svcs[0].Spec.Type; typ != corev1.ServiceTypeClusterIP {
-		t.Errorf("Service type = %q, want ClusterIP (R7: reached only through port-forward)", typ)
-	}
+	checkBothWays(t, serviceViolations, map[string]mutation{
+		"LoadBalancer": func(objs []runtime.Object) []runtime.Object {
+			service(objs).Spec.Type = corev1.ServiceTypeLoadBalancer
+			return objs
+		},
+		"NodePort": func(objs []runtime.Object) []runtime.Object {
+			service(objs).Spec.Type = corev1.ServiceTypeNodePort
+			return objs
+		},
+		"externalIPs": func(objs []runtime.Object) []runtime.Object {
+			service(objs).Spec.ExternalIPs = []string{"203.0.113.7"}
+			return objs
+		},
+		"second Service": func(objs []runtime.Object) []runtime.Object {
+			return append(objs, service(objs).DeepCopy())
+		},
+	})
 }
 
 func TestInstallPodIsRestricted(t *testing.T) {
-	objs := decodeFile(t, installPath)
-	nss := only[*corev1.Namespace](objs)
-	if len(nss) != 1 || nss[0].Name != "visual-kubernetes" || nss[0].Labels["pod-security.kubernetes.io/enforce"] != "restricted" {
-		t.Fatalf("want one Namespace visual-kubernetes with PSA enforce=restricted (S1), got %+v", nss)
-	}
-	deps := only[*appsv1.Deployment](objs)
-	if len(deps) != 1 || deps[0].Name != "visual-kubernetes" || deps[0].Namespace != "visual-kubernetes" {
-		t.Fatalf("want one Deployment visual-kubernetes/visual-kubernetes, got %d", len(deps))
-	}
-	spec := deps[0].Spec.Template.Spec
-	if len(spec.Containers) != 1 {
-		t.Fatalf("containers = %d, want 1", len(spec.Containers))
-	}
-	c := spec.Containers[0]
-	sc := c.SecurityContext
-	switch {
-	case spec.SecurityContext == nil || spec.SecurityContext.RunAsNonRoot == nil || !*spec.SecurityContext.RunAsNonRoot:
-		t.Error("pod must set runAsNonRoot")
-	case sc == nil || sc.ReadOnlyRootFilesystem == nil || !*sc.ReadOnlyRootFilesystem:
-		t.Error("container must set readOnlyRootFilesystem")
-	case sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation:
-		t.Error("container must set allowPrivilegeEscalation: false")
-	case sc.Capabilities == nil || !reflect.DeepEqual(sc.Capabilities.Drop, []corev1.Capability{"ALL"}):
-		t.Error("container must drop ALL capabilities")
-	}
-	if !releaseImage.MatchString(c.Image) {
-		t.Errorf("image = %q, want %s:vX.Y.Z (a released tag, never latest)", c.Image, imageRepo)
-	}
+	no, yes := false, true
+	checkBothWays(t, podViolations, map[string]mutation{
+		"no PSA label": func(objs []runtime.Object) []runtime.Object {
+			delete(only[*corev1.Namespace](objs)[0].Labels, "pod-security.kubernetes.io/enforce")
+			return objs
+		},
+		"runAsNonRoot false": func(objs []runtime.Object) []runtime.Object {
+			dep, _ := appPod(objs)
+			dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = &no
+			return objs
+		},
+		"writable root": func(objs []runtime.Object) []runtime.Object {
+			container(objs).SecurityContext.ReadOnlyRootFilesystem = &no
+			return objs
+		},
+		"privilege escalation": func(objs []runtime.Object) []runtime.Object {
+			container(objs).SecurityContext.AllowPrivilegeEscalation = &yes
+			return objs
+		},
+		"capabilities kept": func(objs []runtime.Object) []runtime.Object {
+			container(objs).SecurityContext.Capabilities.Drop = nil
+			return objs
+		},
+		"latest image": func(objs []runtime.Object) []runtime.Object {
+			container(objs).Image = imageRepo + ":latest"
+			return objs
+		},
+		"liveness on /healthz": func(objs []runtime.Object) []runtime.Object {
+			container(objs).LivenessProbe.ProbeHandler = corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromString("http")}}
+			return objs
+		},
+		"no liveness": func(objs []runtime.Object) []runtime.Object {
+			container(objs).LivenessProbe = nil
+			return objs
+		},
+		"readiness not gated": func(objs []runtime.Object) []runtime.Object {
+			container(objs).ReadinessProbe = nil
+			return objs
+		},
+	})
 }
 
 // TestProbeRBACMatchesInstall keeps the kind probe's ClusterRole identical to the one users
@@ -179,5 +198,11 @@ func TestProbeRBACMatchesInstall(t *testing.T) {
 	}
 	if !reflect.DeepEqual(inst[0].Rules, probe[0].Rules) {
 		t.Errorf("test/kind/probe-rbac.yaml rules differ from deploy/install.yaml")
+	}
+	// Must-fail: one changed verb in a copy is a difference the comparison sees.
+	mutated := probe[0].DeepCopy()
+	mutated.Rules[0].Verbs = []string{"get"}
+	if reflect.DeepEqual(inst[0].Rules, mutated.Rules) {
+		t.Errorf("must-fail: a changed probe rule compared equal")
 	}
 }

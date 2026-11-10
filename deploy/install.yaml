@@ -5,9 +5,13 @@
 #   open http://localhost:8080
 #
 # The page has no authentication, so the Service is ClusterIP and is reached only through
-# port-forward (R7). The ClusterRole is get/list/watch only, and Secrets are readable only by
-# the one named resourceName (R1, R2); TestInstallManifestReadOnly pins both. The release
-# asset pins the image by digest; this file in git names the same release by tag.
+# port-forward (R7). A NetworkPolicy denies all ingress to the namespace, so other pods cannot
+# use the app's read access through the Service or the pod IP; port-forward enters the pod's
+# own network namespace and still works. The policy holds only where the CNI enforces
+# NetworkPolicy (GKE Dataplane V2, Cilium, Calico, kindnet do). The ClusterRole is
+# get/list/watch only, and Secrets are readable only by the one named resourceName (R1, R2);
+# install_test.go pins all of this. The release asset pins the image by digest; this file in
+# git names the same release by tag, which the registry keeps immutable.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -52,6 +56,10 @@ rules:
     resources: [nodes/stats, pods/log]
     verbs: [get]
   - apiGroups: [""]
+    # PRD R2's one named exception: the mTLS client cert for GKE Dataplane V2's Hubble Relay
+    # (plan Phase 6). A Role in its namespace would fail `kubectl apply` on every cluster
+    # without that namespace (R3), so the rule stays cluster-wide by name; the v0.1.0
+    # security review's least-privilege LOW is left for that reason.
     resources: [secrets]
     resourceNames: [hubble-relay-client-certs]
     verbs: [get]
@@ -140,14 +148,16 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # Readiness waits for the informers to sync (/healthz). Liveness only checks that
+          # the server accepts connections: /healthz can stay 503 through a long initial
+          # list or a burst of changes, and a restart then would drop the page mid-demo.
           readinessProbe:
             httpGet:
               path: /healthz
               port: http
             periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /healthz
+            tcpSocket:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 20
@@ -178,3 +188,14 @@ spec:
     - name: http
       port: 80
       targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: visual-kubernetes-deny-ingress
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]

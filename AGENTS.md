@@ -20,6 +20,7 @@ go run ./cmd/visual-kubernetes probe --kubeconfig .agents/scratch/kind/kubeconfi
 go run ./cmd/visual-kubernetes --kubeconfig .agents/scratch/kind/kubeconfig   # serve on 127.0.0.1:8080
 go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson   # no cluster
 test/kind/probe.sh     # image build + kind load + in-cluster probe
+KUBECONFIG=.agents/scratch/kind/kubeconfig VK_MUST_FAIL=1 test/kind/install-check.sh [MANIFEST]   # live install check: rollout, healthz/page/stream, can-i, ingress denied both ways
 go run ./test/fixturegen   # rewrite test/fixtures/streams/*.ndjson after a model change (TestFixturesAreCurrent fails when stale)
 ```
 
@@ -31,7 +32,7 @@ The agreed shape is in `SDD.md` and the open plan record PLAN-2026-11-09-1906-pl
 
 The page (`web/src/`) keeps the stream in a `Graph` store (`lib/graph.ts`, events parsed by `lib/wire.ts`), with metrics history and Events in `lib/telemetry.ts` and pulses and pod travel in `lib/motion.ts`. In `web/src/web/`, `scene.ts` turns the graph into anchors and links for the groups the filter shows. `folding.ts` folds static control-plane pods behind their `cp/*` part (D30), and `sizing.ts` sizes apps by network, then CPU, then pods, with a halo on the top 3. `layout.ts` runs d3-force over those, with the API hub pinned at the centre. `camera.ts` auto-fits the web at 16:9 until the presenter zooms or pans; F fits again and V hides the pill. At most 150 bubbles are drawn, and `Counters.tsx` shows the rest as corner counters (D33). Labels are drawn in screen space so they stay 14/12px at any zoom. The click panel (`web/src/panel/`) shows config (`/api/objects`), Events, metrics sparklines, pod logs (`/api/logs`), node conditions and the API server's data sources; Esc closes it.
 
-PRD R7 (ADR-008): the default install is a ClusterIP Service reached through `kubectl port-forward`. An opt-in `deploy/install-lb.yaml` with a LoadBalancer Service, required `loadBalancerSourceRanges` and `--logs=false` is planned for Phase 7; neither the manifests nor the flag exist yet.
+PRD R7 (ADR-008): the default install is `deploy/install.yaml`: a ClusterIP Service reached through `kubectl port-forward`, plus a NetworkPolicy that denies all ingress to the namespace so no other pod can use the app's read access (enforced where the CNI implements NetworkPolicy). `deploy/install_test.go` pins RBAC, Service, NetworkPolicy and pod shape, each check also run on mutated copies. The opt-in `deploy/install-lb.yaml` (LoadBalancer Service, required `loadBalancerSourceRanges`, `--logs=false`) and the `kube-system` variant are Phase 7 work; neither exists yet, nor does the `--logs` flag.
 
 ## Project-Specific Standards
 
@@ -42,7 +43,7 @@ PRD R7 (ADR-008): the default install is a ClusterIP Service reached through `ku
 
 ## Testing
 
-Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`. Playwright (`test/e2e/`, config `web/playwright.config.ts`) runs against the binary, never against `vite dev`. It starts one `--replay` server per recorded stream (`test/e2e/servers.ts`): `deploy-scale` on 127.0.0.1:18080, `node-join` 18081, `missing-sources` 18082, `large-cluster` 18083, a telemetry stream on 18084 that `test/e2e/fixtures/telemetry.mjs` writes into `.agents/scratch/e2e/` first (D35), and `deploy-scale` again on 18085 for its recorded Events, opened only by `panel.spec.ts`. The specs are `web`, `filter`, `wire`, `panel`, `encodings`, `folding`, `budget` and `perf` (28 tests). They include the R10 text-size and R9 same-origin checks (`test/e2e/checks.ts`), each validated in its must-fail state, and the G3 perf probe (≥ 30 fps; its must-fail state, under a 20× CPU throttle, was checked once by hand and becomes a suite test in Phase 5). The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
+Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`, and `test/kind/install-check.sh` against an installed manifest (rollout, `/healthz`, page, stream snapshot, `auth can-i` denials, no ERROR logs, ingress blocked from another namespace; `VK_MUST_FAIL=1` deletes the NetworkPolicy, expects open, restores it). The same script verifies the release on a GKE test cluster (`DEPLOY-gcp`). Playwright (`test/e2e/`, config `web/playwright.config.ts`) runs against the binary, never against `vite dev`. It starts one `--replay` server per recorded stream (`test/e2e/servers.ts`): `deploy-scale` on 127.0.0.1:18080, `node-join` 18081, `missing-sources` 18082, `large-cluster` 18083, a telemetry stream on 18084 that `test/e2e/fixtures/telemetry.mjs` writes into `.agents/scratch/e2e/` first (D35), and `deploy-scale` again on 18085 for its recorded Events, opened only by `panel.spec.ts`. The specs are `web`, `filter`, `wire`, `panel`, `encodings`, `folding`, `budget` and `perf` (28 tests). They include the R10 text-size and R9 same-origin checks (`test/e2e/checks.ts`), each validated in its must-fail state, and the G3 perf probe (≥ 30 fps; its must-fail state, under a 20× CPU throttle, was checked once by hand and becomes a suite test in Phase 5). The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
 
 ## Deploy
 
@@ -57,6 +58,8 @@ Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). 
 | `design/mockup-v3.html` | Approved visual reference (simulated data, self-contained) |
 | `cmd/visual-kubernetes/` | The binary: serve (live or `--replay`) and `probe` |
 | `cmd/visual-kubernetes/embed.go` | Embeds `ui/dist` (the Vite client build, gitignored) and serves it with CSP and same-origin headers |
+| `deploy/` | `install.yaml` (namespace, read-only RBAC, Deployment, ClusterIP Service, deny-all-ingress NetworkPolicy) and `install_test.go` + `checks_test.go`, which pin it both ways |
+| `Dockerfile` | Multi-arch image: node stage builds the page, Go stage cross-compiles, distroless non-root |
 | `web/` | The page: TanStack Start SPA (pnpm, Tailwind, d3-force); `vite.config.ts` names the embed dir |
 | `web/src/icons/` | Official Kubernetes icons, vendored unmodified with their Apache-2.0 `LICENSE` and source commit |
 | `web/src/web/` | The force web: scene, layout, camera, sizing, folding, counters, pan/zoom |
@@ -69,7 +72,7 @@ Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). 
 | `internal/sources/` | 5 s collector: metrics.k8s.io, kubelet network rates, `/readyz`, `/metrics`, Leases → `metrics`, `capabilities`, `cp/*` |
 | `internal/stream/` | SSE hub (15 min resume ring), HTTP endpoints, Host guard, replay of recorded streams |
 | `test/fixturegen/` | Writes the recorded streams in `test/fixtures/streams/` (deterministic, from `modeltest` objects) |
-| `test/kind/` | kind fixture (`up.sh`), probe RBAC and Pod, `probe.sh` |
+| `test/kind/` | kind fixture (`up.sh`), probe RBAC and Pod, `probe.sh`, live install check `install-check.sh` |
 | `PRD.md` | What and why: problem, goals, the non-negotiable requirements |
 | `SDD.md` | How the parts fit: components, flows, decisions |
 | `TDD.md` | How each part is built and tested |

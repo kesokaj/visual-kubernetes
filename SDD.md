@@ -22,7 +22,7 @@ flowchart LR
 
 ## Components
 
-Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0), `internal/watch`, `internal/model` (Phase 1), and the serve command, `internal/sources`, `internal/stream` (Phase 2), the page shell in `web/` embedded by `cmd/visual-kubernetes/embed.go` (Phase 3), and the click panel, encodings, folding and perf probe (Phase 4). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
+Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0), `internal/watch`, `internal/model` (Phase 1), and the serve command, `internal/sources`, `internal/stream` (Phase 2), the page shell in `web/` embedded by `cmd/visual-kubernetes/embed.go` (Phase 3), the click panel, encodings, folding and perf probe (Phase 4), and `deploy/install.yaml` with the multi-arch `Dockerfile` (Phase 7, release v0.1.0). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
 
 | ID | Component | Responsibility | Satisfies |
 |---|---|---|---|
@@ -30,7 +30,7 @@ Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe
 | M2 | `internal/stream` (replay included; causal chains planned) | Serve SSE deltas with resume, the object/log endpoints and causal chains | R5 |
 | M3 | `web/` (spider web, filter pill, click panel, encodings and folding built; replay keys planned) | The embedded spider-web page, filter pill, click panel, replay keys | R5, R6, R9, R10, S5 |
 | M4 | Hubble client, a new internal package planned in Phase 6 | Optional Hubble Relay flows | S3 |
-| M5 | `deploy/`, `Dockerfile`, `examples/` (a Phase 0 Dockerfile; the rest planned in Phases 5 and 7) | One-command install, ClusterIP access by default and an opt-in LoadBalancer variant (ADR-008), demo scenarios, local binary run | R3, R7, S1, S6, S7 |
+| M5 | `deploy/`, `Dockerfile`, `examples/` (`install.yaml` and the multi-arch Dockerfile built; the kube-system and LoadBalancer variants planned in Phase 7, `examples/` in Phase 5) | One-command install, ClusterIP access by default and an opt-in LoadBalancer variant (ADR-008), demo scenarios, local binary run | R3, R7, S1, S6, S7 |
 
 ## Flows
 
@@ -56,7 +56,7 @@ ADR-001 (PRD v1), ADR-002 (SSE, not WebSocket), ADR-003 (SVG + d3-force with Can
 
 ## Deployment
 
-One Deployment plus a ClusterRole, applied with one `kubectl apply -f install.yaml`; `install-lb.yaml` is the opt-in LoadBalancer variant (ADR-008). Both are planned in Phase 7. The procedures are `DEPLOY-local` and `DEPLOY-gcp`.
+One Deployment plus a ClusterRole, applied with one `kubectl apply -f install.yaml` (built; the release asset pins the image by digest). It also carries a ClusterIP Service and a NetworkPolicy denying all ingress, so only `kubectl port-forward` reaches the unauthenticated page; the policy is enforced only where the CNI implements NetworkPolicy. `install-lb.yaml`, the opt-in LoadBalancer variant (ADR-008), and the `kube-system` variant are planned in Phase 7. The procedures are `DEPLOY-local` and `DEPLOY-gcp`.
 
 ## Risks
 

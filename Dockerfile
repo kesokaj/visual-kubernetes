@@ -4,7 +4,9 @@
 # `docker buildx build --platform linux/amd64,linux/arm64` needs no emulation.
 FROM --platform=$BUILDPLATFORM node:26-slim AS web
 WORKDIR /src/web
-RUN npm install -g corepack && corepack enable pnpm
+# corepack is pinned (node 26 no longer bundles it); it then fetches the pnpm version that
+# web/package.json's packageManager field names.
+RUN npm install -g corepack@0.36.0 && corepack enable pnpm
 COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
