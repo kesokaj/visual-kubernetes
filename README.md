@@ -7,10 +7,12 @@ A read-only, real-time visualizer of Kubernetes internals on one white page, for
 One command on any cluster that grants the read-only ClusterRole (the image is public and multi-arch, amd64 + arm64):
 
 ```bash
-kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
+kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install.yaml
 kubectl -n visual-kubernetes rollout status deploy/visual-kubernetes
 kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80   # then open http://localhost:8080
 ```
+
+v0.1.0 is a pre-release, and GitHub's `releases/latest/download/…` URL skips pre-releases (it answers 404 until the first full release), so the command names the version.
 
 The release asset pins the image by digest; [`deploy/install.yaml`](deploy/install.yaml) in git names the same release by tag (immutable in the registry), so copying it works too. It creates the namespace `visual-kubernetes` (Pod Security `restricted`), a ServiceAccount, a get/list/watch-only ClusterRole and its binding, one Deployment, a ClusterIP Service and a NetworkPolicy that denies all ingress. The page has no authentication: the policy keeps other pods from using its read access, and `kubectl port-forward` still works because it enters the pod's own network namespace. The policy is enforced only where the cluster's CNI implements NetworkPolicy (GKE Dataplane V2, Cilium, Calico, kind's kindnet); elsewhere any pod can reach the Service. Remove it with `kubectl delete -f` on the same file; the app keeps no state.
 
