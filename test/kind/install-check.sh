@@ -21,7 +21,7 @@ ns=visual-kubernetes
 testns=vk-nettest
 curl_image=curlimages/curl:8.11.1
 # The context name becomes a directory: keep it to safe characters (no "/" or "..").
-ctx="$(kubectl config current-context | tr -c "A-Za-z0-9._-\n" "_")"
+ctx="$(kubectl config current-context | tr -c 'A-Za-z0-9._\n-' '_')"
 ctx="${ctx//../_}"
 out="$repo/.agents/scratch/install-check/$ctx"
 mkdir -p "$out"
@@ -79,8 +79,10 @@ kubectl -n "$testns" wait --for=condition=Ready pod/nettest --timeout=120s >/dev
 svc_ip="$(kubectl -n "$ns" get svc visual-kubernetes -o jsonpath='{.spec.clusterIP}')"
 pod_ip="$(kubectl -n "$ns" get pod -l app.kubernetes.io/name=visual-kubernetes -o jsonpath='{.items[0].status.podIP}')"
 reach() { kubectl -n "$testns" exec nettest -- curl -sk -m 5 -o /dev/null -w '%{http_code}' "$1" 2>/dev/null || true; }
-# Positive control: the test pod reaches something outside the app's namespace, so a
-# "blocked" below means the policy, not a broken exec or pod network. Any HTTP status counts.
+# Positive control: the test pod gets an HTTP answer from the API server's Service, so curl,
+# exec and DNS work. It does not prove pod-to-pod reach: a cluster-wide policy that exempts
+# the API server could also block the app. Only VK_MUST_FAIL=1 (open once our policy is gone)
+# proves the block comes from this policy; the release check always runs with it.
 ctl="$(reach https://kubernetes.default.svc/livez)"
 [[ "$ctl" =~ ^[1-5][0-9][0-9]$ ]] && pass "nettest control reaches the API server (got $ctl)" || fail "nettest control: got '${ctl:-none}'"
 # expect STATE: "blocked" (000) or "open" (200), retried for up to 30 s while policy settles.
