@@ -1,7 +1,7 @@
 # PRD — visual-kubernetes
 
 A read-only, real-time visualizer of a Kubernetes cluster's internals on one white page, for live teaching demos.
-Status: approved · Owner: kesokaj · Last updated: 2026-11-09 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
+Status: approved · Owner: kesokaj · Last updated: 2026-11-10 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
 
 <!-- Read before every significant change. Immutable without the user's explicit approval of the exact text:
      propose the edit → approval → ADR → PRD.md and TODO.md in one commit (global context § Hard rules).
@@ -32,7 +32,7 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 
 - Changing a cluster in any way: no writes, no enabling VPA, Hubble or node pools, no provisioning.
 - Helm charts or operators in v1.
-- Authentication on the UI; it is reached only through `kubectl port-forward`.
+- Authentication on the UI. The default install is reached through `kubectl port-forward`; the opt-in LoadBalancer variant relies on source ranges (R7).
 - Multi-cluster views, persistence or history beyond the in-memory timeline.
 - Installing optional traffic sources (Hubble, OTel); they are used only when already present.
 
@@ -50,8 +50,8 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
   <!-- provenance: operator turn 1 "visualizing everything in real time"; grill Q2, 2026-11-09; enforced by: not yet enforced: replay e2e (plan Phase 4) -->
 - **R6** — The page is white, uses a force-directed web with official Kubernetes icons, and shows no chrome except a filter pill (all groups on by default) and a click panel.
   <!-- provenance: operator 2026-11-09 15:33 ("skip the hierarchy", "small filtering view … default is everything on"); enforced by: design/mockup-v3.html (test planned in Phase 2: Playwright filter and layout specs) -->
-- **R7** — The UI is reachable only through a ClusterIP Service and `kubectl port-forward`, and docs say never to expose it.
-  <!-- provenance: grill Q10 + row 12, 2026-11-09; enforced by: not yet enforced: install.yaml Service type check (plan Phase 6) -->
+- **R7** — The default install exposes the UI only through a ClusterIP Service and `kubectl port-forward`. A separate opt-in manifest, `install-lb.yaml`, exposes it through a network LoadBalancer Service whose `loadBalancerSourceRanges` the operator must set. That variant starts with the pod-logs panel off, and the docs say the page has no authentication, so anyone inside those ranges can read the cluster's objects.
+  <!-- provenance: operator "loadbalancer yes", 2026-11-10 (supersedes grill Q10 + row 12); enforced by: not yet enforced: deploy/ manifest tests (plan Phase 7: TestInstallServiceIsClusterIP, TestInstallLBRequiresSourceRanges) -->
 - **R8** — Kubelet connections always verify TLS; the app never uses `nodes/proxy` or skips verification.
   <!-- provenance: grill row 4, 2026-11-09; enforced by: `internal/kubelet/client_test.go` TestClientRefusesUnverifiedCert (fails when verification is disabled; ADR-005) -->
 - **R9** — The image serves every UI asset; the page makes no external network request at runtime.
@@ -93,4 +93,3 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 ## Open questions
 
 - ~~Pod logs in the click panel need `get pods/log`, which grill Q8 excluded~~ — struck 2026-11-09: granted (plan D9).
-- Exposing the UI through a network LoadBalancer on a test cluster (operator, 2026-11-09 19:05) conflicts with R7 — decided by a PRD edit proposal in the next session.
