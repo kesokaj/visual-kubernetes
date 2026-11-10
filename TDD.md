@@ -30,7 +30,7 @@ Implements: M2 · Built in Phase 2 (`internal/stream`); causal chains planned in
 
 ## T3 — web page
 
-Implements: M3 · Planned in Phases 2–4 (`web/`, SVG + d3-force, filter pill, panel, replay keys). Not built yet.
+Implements: M3 · Built in Phase 3: `web/` (TanStack Start SPA, pnpm, Tailwind) with `lib/wire.ts` (guarded SSE parsing, invalid items dropped one by one), `lib/graph.ts` (external store), `web/scene.ts` (filter → anchors and links), `web/layout.ts` (d3-force, hub pinned), `web/camera.ts` (16:9 auto-fit, zoom, pan) and screen-space labels; `filter/FilterPill.tsx` (8 groups). Icons are vendored in `web/src/icons/` and turned into one sprite. The click panel and replay keys are planned in Phase 4.
 
 ## T4 — Hubble flows
 
@@ -46,7 +46,7 @@ No stored data: the live model and a short timeline are held in memory only.
 
 ## Testing strategy
 
-Unit tests (`go test -race ./...`) cover `internal/kubelet`, `internal/probe`, `internal/watch` (fake discovery and dynamic client), `internal/model` (`modeltest` object builders), `internal/sources` (hand-written fakes and `testdata/summary.json`, a Summary shaped after the kubelet API with a hostNetwork pod), `internal/stream` (hub with an injected clock, SSE over `httptest`, `synctest` replay timing), `test/fixturegen` and the command (replay serve and shutdown). Integration runs the probe in-cluster on kind (`test/kind/up.sh`, `test/kind/probe.sh`); the server's Phase 2 live check was a manual run (a scratch Deployment, port-forward, curl of `/api/stream`) whose output is in the Phase 2 `testing` record, until Phase 7's install manifest makes it scriptable. The tiers are listed in AGENTS.md § Testing. See `GUIDE-testing` (`fyr record get GUIDE-testing`).
+Unit tests (`go test -race ./...`) cover `internal/kubelet`, `internal/probe`, `internal/watch` (fake discovery and dynamic client), `internal/model` (`modeltest` object builders), `internal/sources` (hand-written fakes and `testdata/summary.json`, a Summary shaped after the kubelet API with a hostNetwork pod), `internal/stream` (hub with an injected clock, SSE over `httptest`, `synctest` replay timing), `test/fixturegen` and the command (replay serve and shutdown, page routing, headers and hash-pinned CSP, the embed dir pinned to the Vite outDir, the page's wire lists pinned to the model, vendored icons free of active content). Playwright (`test/e2e/`) drives Chromium against the binary replaying `test/fixtures/streams/deploy-scale.ndjson`: the web, zoom/pan/F, the filter pill and V, stream guards, and the R9/R10 checks, each validated in its must-fail state. Integration runs the probe in-cluster on kind (`test/kind/up.sh`, `test/kind/probe.sh`); the server's Phase 2 live check was a manual run (a scratch Deployment, port-forward, curl of `/api/stream`) whose output is in the Phase 2 `testing` record, until Phase 7's install manifest makes it scriptable. The tiers are listed in AGENTS.md § Testing. See `GUIDE-testing` (`fyr record get GUIDE-testing`).
 
 ## Build, run and deploy
 
@@ -58,6 +58,6 @@ Unit tests (`go test -race ./...`) cover `internal/kubelet`, `internal/probe`, `
 |---|---|---|
 | M1 | T1 | probe and kubelet client: `go test -race ./internal/...`, kind in-cluster probe (Phase 0); watch and model: `go test -race ./internal/watch/... ./internal/model/...` (Phase 1); sources and serve: `go test -race ./internal/sources/... ./cmd/...`, manual kind live check (Phase 2) |
 | M2 | T2 | fixtures: `go test ./test/fixturegen/...` (Phase 1); hub, SSE, endpoints, replay: `go test -race ./internal/stream/...`, manual kind live check (Phase 2) |
-| M3 | T3 | not yet |
+| M3 | T3 | page server: `go test -race ./cmd/...`; page: `pnpm -C web build && pnpm -C web exec playwright test` (Phase 3) |
 | M4 | T4 | not yet |
 | M5 | T5 | not yet |

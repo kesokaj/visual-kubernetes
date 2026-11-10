@@ -67,8 +67,9 @@ func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", addr, err)
 	}
-	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "")
-	return serveHTTP(ctx, ln, stream.HostGuard(a.handler, o.addr))
+	page := distFS()
+	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil)
+	return serveHTTP(ctx, ln, stream.HostGuard(withPage(a.handler, page), o.addr))
 }
 
 // listenAddr is --addr when given, else the D26 default for where the binary runs.

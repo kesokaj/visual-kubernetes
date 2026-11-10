@@ -3,3 +3,4 @@
 design
 test
 *.md
+cmd/visual-kubernetes/ui/dist

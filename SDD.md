@@ -22,19 +22,19 @@ flowchart LR
 
 ## Components
 
-Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0), `internal/watch`, `internal/model` (Phase 1), and the serve command, `internal/sources`, `internal/stream` (Phase 2). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
+Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0), `internal/watch`, `internal/model` (Phase 1), and the serve command, `internal/sources`, `internal/stream` (Phase 2), and the page shell in `web/` embedded by `cmd/visual-kubernetes/embed.go` (Phase 3). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
 
 | ID | Component | Responsibility | Satisfies |
 |---|---|---|---|
 | M1 | `cmd/visual-kubernetes` + `internal/watch`, `internal/model`, `internal/sources` | Watch the cluster read-only, read metrics sources, keep the live model | R1, R2, R4, R8, S2, S4 |
 | M2 | `internal/stream` (replay included; causal chains planned) | Serve SSE deltas with resume, the object/log endpoints and causal chains | R5 |
-| M3 | `web/` (planned) | The embedded spider-web page, filter pill, click panel, replay keys | R5, R6, R9, R10, S5 |
+| M3 | `web/` (spider web and filter pill built; click panel and replay keys planned) | The embedded spider-web page, filter pill, click panel, replay keys | R5, R6, R9, R10, S5 |
 | M4 | `internal/hubble` (planned) | Optional Hubble Relay flows | S3 |
 | M5 | `deploy/`, `Dockerfile`, `examples/` (planned) | One-command install, ClusterIP access, demo scenarios, local binary run | R3, R7, S1, S6, S7 |
 
 ## Flows
 
-Built: cluster watch → model → hub → SSE. Informers (`internal/watch`) hand batched object changes to `model.Apply`, whose deltas become SSE events in the `internal/stream` hub (15 min ring, `Last-Event-ID` resume, else a fresh snapshot). Every 5 s, once the informers have synced, the `internal/sources` collector reads metrics.k8s.io, kubelet Summary (in-cluster only), `/readyz`, `/metrics` and Leases, and publishes `metrics`, `capabilities` and inferred `cp/*` upserts into the same hub. `--replay FILE` feeds the hub from a recorded stream instead. Planned next: hub → page (Phase 3).
+Built: cluster watch → model → hub → SSE. Informers (`internal/watch`) hand batched object changes to `model.Apply`, whose deltas become SSE events in the `internal/stream` hub (15 min ring, `Last-Event-ID` resume, else a fresh snapshot). Every 5 s, once the informers have synced, the `internal/sources` collector reads metrics.k8s.io, kubelet Summary (in-cluster only), `/readyz`, `/metrics` and Leases, and publishes `metrics`, `capabilities` and inferred `cp/*` upserts into the same hub. `--replay FILE` feeds the hub from a recorded stream instead. Built in Phase 3: hub → page. The binary serves the embedded build at `/` (hash-pinned CSP, same origin only); the page opens `/api/stream`, keeps a `Graph` store, filters it into a scene, lays it out with d3-force around the pinned API hub and auto-fits it at 16:9.
 
 ```mermaid
 flowchart LR

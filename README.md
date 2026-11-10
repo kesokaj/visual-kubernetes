@@ -4,7 +4,7 @@ A read-only, real-time visualizer of Kubernetes internals on one white page, for
 
 ## Quick start
 
-No code yet. The first plan phase adds the build, run and test commands. The planned install is one command:
+Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The planned install is one command:
 
 ```bash
 kubectl apply -f install.yaml        # planned: one Deployment + read-only ClusterRole
@@ -15,12 +15,13 @@ The commands become the contract in `AGENTS.md` § Setup commands; the `GUIDE-te
 
 ## Architecture
 
-There is no code yet. The plan: one Go binary watches the cluster with client-go informers (read-only) and keeps the live model in memory. It streams changes over SSE to an embedded TanStack Start page that draws a force-directed web (SVG + d3-force, Canvas for traffic). The visual reference is `design/mockup-v3.html`.
+One Go binary watches the cluster with client-go informers (read-only) and keeps the live model in memory. It streams changes over SSE to an embedded TanStack Start page that draws a force-directed web (SVG + d3-force; Canvas for traffic is planned). The visual reference is `design/mockup-v3.html`.
 
 ```
-cmd/visual-kubernetes/  # planned: the binary
-internal/               # planned: the packages, one responsibility each
-web/                    # planned: the TanStack Start frontend, built into the binary
+cmd/visual-kubernetes/  # the binary: serve (live or --replay), probe, the embedded page
+internal/               # the packages, one responsibility each
+web/                    # the TanStack Start frontend, built into the binary
+test/                   # fixtures, Playwright e2e, kind integration
 design/                 # approved mockup
 .agents/                # project customizations and scratch/ (trail records live in fyr's brain store, read with fyr record)
 ```
