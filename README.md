@@ -55,11 +55,11 @@ What the web encodes:
 
 ## Configuration
 
-No settings yet; the code reads none.
+No config file or environment settings. The binary takes flags: `--kubeconfig PATH` (local mode), `--addr HOST:PORT` (default `127.0.0.1:8080` locally, `:8080` in-cluster) and `--replay FILE` (serve a recorded stream, no cluster). A `--logs=false` flag for the LoadBalancer variant is planned (ADR-008).
 
 ## Deploy
 
-How it runs locally and on GCP is in the `DEPLOY-local` and `DEPLOY-gcp` records; a release goes through `/fyr-preflight`. The UI has no auth: never expose it beyond `kubectl port-forward`.
+How it runs locally and on GCP is in the `DEPLOY-local` and `DEPLOY-gcp` records; a release goes through `/fyr-preflight`. The UI has no auth: reach it only through `kubectl port-forward`. An opt-in LoadBalancer variant limited by source ranges, with pod logs off, is planned (PRD R7, ADR-008); until it ships, never expose the Service.
 
 ## Where things are
 

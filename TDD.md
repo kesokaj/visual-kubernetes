@@ -12,7 +12,7 @@ Status: draft · Last updated: 2026-11-10 · Requirements: [PRD.md](PRD.md) · D
 
 Implements: M1 · Spec: SPEC-visual-kubernetes-stream (none yet: the plan writes it before code)
 
-- **Interfaces:** `visual-kubernetes [--kubeconfig PATH] [--addr HOST:PORT] [--replay FILE]` serves the stream (`--addr` defaults to `127.0.0.1:8080` with `--kubeconfig` or `--replay`, `:8080` in-cluster, plan D26; `--replay` with `--kubeconfig` is a usage error). `visual-kubernetes probe [--kubeconfig PATH]` prints `<source> ok|missing|denied|unreachable|error <detail>` per source (`internal/probe`); exit 0 always, 1 when no client can be built, 2 on usage. Planned: the embedded UI (Phase 3).
+- **Interfaces:** `visual-kubernetes [--kubeconfig PATH] [--addr HOST:PORT] [--replay FILE]` serves the stream (`--addr` defaults to `127.0.0.1:8080` with `--kubeconfig` or `--replay`, `:8080` in-cluster, plan D26; `--replay` with `--kubeconfig` is a usage error). `visual-kubernetes probe [--kubeconfig PATH]` prints `<source> ok|missing|denied|unreachable|error <detail>` per source (`internal/probe`); exit 0 always, 1 when no client can be built, 2 on usage. The serve command embeds the page build (`cmd/visual-kubernetes/embed.go`, Phase 3). Planned in Phase 7: `--logs=false`, under which `/api/logs` answers 403 (plan D38, ADR-008).
 - **Errors:** `probe.Classify` maps API and TLS errors to the five states, checking TLS errors first. A missing optional source degrades the view (a `capabilities` event names it) and never crashes the app.
 - **Configuration:** in-cluster config, or `--kubeconfig` when run locally. The kubelet Summary client (`internal/kubelet`) is built only from in-cluster config, verifies TLS against the CA bundle and never follows redirects (ADR-005, ADR-006).
 - **Watch (`internal/watch`):** discovery keeps the list+watch resources of the 13 RBAC groups (D16), minus Secrets and subresources; a `Limit: 1` list skips forbidden, gone or list-less kinds (one `kind skipped` warning each) while any other error keeps the informer retrying. Each informer trims objects before caching them (`trimForCache`: managedFields, the last-applied annotation, core ConfigMap `data`/`binaryData`) and feeds one goroutine that hands batches of typed objects (CRD kinds stay unstructured) to the model; `Synced()` is the planned `/healthz` condition.
@@ -30,15 +30,21 @@ Implements: M2 · Built in Phase 2 (`internal/stream`); causal chains planned in
 
 ## T3 — web page
 
-Implements: M3 · Built in Phase 3: `web/` (TanStack Start SPA, pnpm, Tailwind) with `lib/wire.ts` (guarded SSE parsing, invalid items dropped one by one), `lib/graph.ts` (external store), `web/scene.ts` (filter → anchors and links), `web/layout.ts` (d3-force, hub pinned), `web/camera.ts` (16:9 auto-fit, zoom, pan) and screen-space labels; `filter/FilterPill.tsx` (8 groups). Icons are vendored in `web/src/icons/` and turned into one sprite. The click panel and replay keys are planned in Phase 4.
+Implements: M3 · Built in Phases 3 and 4: `web/` (TanStack Start SPA, pnpm, Tailwind).
+
+- **Stream and state (`web/src/lib/`):** `wire.ts` parses SSE guardedly, dropping invalid items one by one; `graph.ts` is the external store; `telemetry.ts` keeps the latest metrics sample per id, 90 s of sparkline history, `sizeBy` (pods until the first `metrics` event, D33) and a bounded Event log; `motion.ts` derives pulses and pod travel from deltas.
+- **Force web (`web/src/web/`):** `scene.ts` turns the filtered graph into anchors and links; `folding.ts` folds static control-plane pods behind their `cp/*` entity when it exists (D30, D34); `sizing.ts` sizes apps by area from network, CPU or pod count and ranks the top 3 for halos (S2); `layout.ts` runs d3-force with the hub pinned and reheats only on structural change (D36); `camera.ts` auto-fits at 16:9 and hands over on zoom or pan; `panzoom.ts` maps clicks and drags; `Counters.tsx` shows `counter/*` entities and the 150-bubble budget's overflow (`counter/page.overBudget`, D33); labels are drawn in screen space.
+- **Filter and panel:** `filter/FilterPill.tsx` (8 groups, all on). `panel/` is the click panel: config YAML from `/api/objects` (an app requests its top workload), Events, metrics sparklines, pod logs from `/api/logs` (warning that logs can carry secrets), node conditions read from the Node YAML, `cp/*` evidence and the API server's data sources. Esc, the close button or a click on empty space closes it. Live Events need the server's `event` SSE, which waits on the D29 Task (D32).
+- **Icons:** vendored in `web/src/icons/` (Apache-2.0) and turned into one sprite.
+- **Planned:** replay keys (Phase 5); traffic particles (Phase 6); the "logs are off on this install" message under `--logs=false` (Phase 7, D38).
 
 ## T4 — Hubble flows
 
-Implements: M4 · Planned in Phase 5 (auto-detected Relay, `GetFlows`). Not built yet.
+Implements: M4 · Planned in Phase 6 (auto-detected Relay, `GetFlows`). Not built yet.
 
 ## T5 — packaging and examples
 
-Implements: M5 · Planned in Phases 4 and 6 (`deploy/install.yaml`, kube-system variant, Dockerfile, `examples/`). Not built yet.
+Implements: M5 · Planned in Phases 5 and 7: `examples/` (Phase 5); `deploy/install.yaml`, the kube-system variant, the opt-in LoadBalancer variant with required `loadBalancerSourceRanges` and `--logs=false` (ADR-008), and the multi-arch Dockerfile (Phase 7). Not built yet beyond the Phase 0 Dockerfile.
 
 ## Data model
 
@@ -46,7 +52,7 @@ No stored data: the live model and a short timeline are held in memory only.
 
 ## Testing strategy
 
-Unit tests (`go test -race ./...`) cover `internal/kubelet`, `internal/probe`, `internal/watch` (fake discovery and dynamic client), `internal/model` (`modeltest` object builders), `internal/sources` (hand-written fakes and `testdata/summary.json`, a Summary shaped after the kubelet API with a hostNetwork pod), `internal/stream` (hub with an injected clock, SSE over `httptest`, `synctest` replay timing), `test/fixturegen` and the command (replay serve and shutdown, page routing, headers and hash-pinned CSP, the embed dir pinned to the Vite outDir, the page's wire lists pinned to the model, vendored icons free of active content). Playwright (`test/e2e/`) drives Chromium against the binary replaying `test/fixtures/streams/deploy-scale.ndjson`: the web, zoom/pan/F, the filter pill and V, stream guards, and the R9/R10 checks, each validated in its must-fail state. Integration runs the probe in-cluster on kind (`test/kind/up.sh`, `test/kind/probe.sh`); the server's Phase 2 live check was a manual run (a scratch Deployment, port-forward, curl of `/api/stream`) whose output is in the Phase 2 `testing` record, until Phase 7's install manifest makes it scriptable. The tiers are listed in AGENTS.md § Testing. See `GUIDE-testing` (`fyr record get GUIDE-testing`).
+Unit tests (`go test -race ./...`) cover `internal/kubelet`, `internal/probe`, `internal/watch` (fake discovery and dynamic client), `internal/model` (`modeltest` object builders), `internal/sources` (hand-written fakes and `testdata/summary.json`, a Summary shaped after the kubelet API with a hostNetwork pod), `internal/stream` (hub with an injected clock, SSE over `httptest`, `synctest` replay timing), `test/fixturegen` and the command (replay serve and shutdown, page routing, headers and hash-pinned CSP, the embed dir pinned to the Vite outDir, the page's wire lists pinned to the model, vendored icons free of active content). Playwright (`test/e2e/`) drives Chromium at 1600×900 against the binary, one `--replay` server per recorded stream (`test/e2e/servers.ts`, ports 18080–18084, D35): `deploy-scale`, `node-join`, `missing-sources`, `large-cluster`, and a telemetry stream (metrics every second, Events every five) written by `test/e2e/fixtures/telemetry.mjs` into `.agents/scratch/e2e/`. Its 27 tests cover the web, zoom/pan/F, the filter pill and V, stream guards, the click panel, encodings (pulse, travel, sizing, halos), folding and the 150-bubble budget, the perf probe (≥ 30 fps; checked failing under a 20× CPU throttle once by hand, TEST-2026-11-10-1319, with no throttle test in the suite yet; run at about 107 bubbles / 498 pods until Phase 5's G3-scale fixture, D42), and the R9/R10 checks, each validated in its must-fail state. `wire.spec.ts` and `budget.spec.ts` serve a hand-written `/api/stream` through `page.route` instead of a replay (D45). Integration runs the probe in-cluster on kind (`test/kind/up.sh`, `test/kind/probe.sh`); the server's Phase 2 live check was a manual run (a scratch Deployment, port-forward, curl of `/api/stream`) whose output is in the Phase 2 `testing` record, until Phase 7's install manifest makes it scriptable. The tiers are listed in AGENTS.md § Testing. See `GUIDE-testing` (`fyr record get GUIDE-testing`).
 
 ## Build, run and deploy
 
@@ -58,6 +64,6 @@ Unit tests (`go test -race ./...`) cover `internal/kubelet`, `internal/probe`, `
 |---|---|---|
 | M1 | T1 | probe and kubelet client: `go test -race ./internal/...`, kind in-cluster probe (Phase 0); watch and model: `go test -race ./internal/watch/... ./internal/model/...` (Phase 1); sources and serve: `go test -race ./internal/sources/... ./cmd/...`, manual kind live check (Phase 2) |
 | M2 | T2 | fixtures: `go test ./test/fixturegen/...` (Phase 1); hub, SSE, endpoints, replay: `go test -race ./internal/stream/...`, manual kind live check (Phase 2) |
-| M3 | T3 | page server: `go test -race ./cmd/...`; page: `pnpm -C web build && pnpm -C web exec playwright test` (Phase 3) |
+| M3 | T3 | page server: `go test -race ./cmd/...`; page: `pnpm -C web build && pnpm -C web exec playwright test` (web, filter, wire: Phase 3; panel, encodings, folding, budget, perf: Phase 4) |
 | M4 | T4 | not yet |
 | M5 | T5 | not yet |

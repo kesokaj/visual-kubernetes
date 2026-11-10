@@ -29,7 +29,9 @@ go run ./test/fixturegen   # rewrite test/fixtures/streams/*.ndjson after a mode
 
 The agreed shape is in `SDD.md` and the open plan record PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual. The approved visual reference is `design/mockup-v3.html`: a force-directed "spider web" on white, apps as bubbles with pods hanging around them, official Kubernetes icons, a small filter pill (all on by default), and click for config, logs and metrics. ADRs: `fyr record list --kind adr`.
 
-The page (`web/src/`) keeps the stream in a `Graph` store (`lib/graph.ts`, events parsed by `lib/wire.ts`). `web/scene.ts` turns it into anchors and links for the groups the filter shows. `web/layout.ts` runs d3-force over those, with the API hub pinned at the centre. `web/camera.ts` auto-fits the web at 16:9 until the presenter zooms or pans; F fits again and V hides the pill. Labels are drawn in screen space so they stay 14/12px at any zoom. The click panel (config, logs, metrics) is Phase 4.
+The page (`web/src/`) keeps the stream in a `Graph` store (`lib/graph.ts`, events parsed by `lib/wire.ts`), with metrics history and Events in `lib/telemetry.ts` and pulses and pod travel in `lib/motion.ts`. In `web/src/web/`, `scene.ts` turns the graph into anchors and links for the groups the filter shows. `folding.ts` folds static control-plane pods behind their `cp/*` part (D30), and `sizing.ts` sizes apps by network, then CPU, then pods, with a halo on the top 3. `layout.ts` runs d3-force over those, with the API hub pinned at the centre. `camera.ts` auto-fits the web at 16:9 until the presenter zooms or pans; F fits again and V hides the pill. At most 150 bubbles are drawn, and `Counters.tsx` shows the rest as corner counters (D33). Labels are drawn in screen space so they stay 14/12px at any zoom. The click panel (`web/src/panel/`) shows config (`/api/objects`), Events, metrics sparklines, pod logs (`/api/logs`), node conditions and the API server's data sources; Esc closes it.
+
+PRD R7 (ADR-008): the default install is a ClusterIP Service reached through `kubectl port-forward`. An opt-in `deploy/install-lb.yaml` with a LoadBalancer Service, required `loadBalancerSourceRanges` and `--logs=false` is planned for Phase 7; neither the manifests nor the flag exist yet.
 
 ## Project-Specific Standards
 
@@ -40,7 +42,7 @@ The page (`web/src/`) keeps the stream in a `Graph` store (`lib/graph.ts`, event
 
 ## Testing
 
-Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`. Playwright (`test/e2e/`, config `web/playwright.config.ts`) runs against the binary replaying `test/fixtures/streams/deploy-scale.ndjson`, never against `vite dev`. It includes the R10 text-size and R9 same-origin checks, each validated in its must-fail state. The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
+Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`. Playwright (`test/e2e/`, config `web/playwright.config.ts`) runs against the binary, never against `vite dev`. It starts one `--replay` server per recorded stream (`test/e2e/servers.ts`): `deploy-scale` on 127.0.0.1:18080, `node-join` 18081, `missing-sources` 18082, `large-cluster` 18083, and a telemetry stream on 18084 that `test/e2e/fixtures/telemetry.mjs` writes into `.agents/scratch/e2e/` first (D35). The specs are `web`, `filter`, `wire`, `panel`, `encodings`, `folding`, `budget` and `perf` (27 tests). They include the R10 text-size and R9 same-origin checks (`test/e2e/checks.ts`), each validated in its must-fail state, and the G3 perf probe (≥ 30 fps; its must-fail state, under a 20× CPU throttle, was checked once by hand and becomes a suite test in Phase 5). The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
 
 ## Deploy
 
@@ -57,7 +59,9 @@ Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). 
 | `cmd/visual-kubernetes/embed.go` | Embeds `ui/dist` (the Vite client build, gitignored) and serves it with CSP and same-origin headers |
 | `web/` | The page: TanStack Start SPA (pnpm, Tailwind, d3-force); `vite.config.ts` names the embed dir |
 | `web/src/icons/` | Official Kubernetes icons, vendored unmodified with their Apache-2.0 `LICENSE` and source commit |
-| `test/e2e/` | Playwright specs (`web`, `filter`, `wire`) and the shared R9/R10 checks |
+| `web/src/web/` | The force web: scene, layout, camera, sizing, folding, counters, pan/zoom |
+| `web/src/panel/` | The click panel: config, Events, metrics, logs, node conditions, data sources |
+| `test/e2e/` | Playwright specs (`web`, `filter`, `wire`, `panel`, `encodings`, `folding`, `budget`, `perf`), the R9/R10 checks (`checks.ts`), the replay servers (`servers.ts`) and the telemetry generator (`fixtures/telemetry.mjs`) |
 | `internal/kubelet/` | Kubelet Summary client, TLS always verified (R8, ADR-005) |
 | `internal/probe/` | One-shot capability probe and the five source states |
 | `internal/watch/` | Discovery + dynamic informers for the RBAC groups (Secrets never listed, forbidden kinds skipped, cache trimmed) |
