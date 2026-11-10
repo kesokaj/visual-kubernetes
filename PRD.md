@@ -53,11 +53,11 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 - **R7** — The UI is reachable only through a ClusterIP Service and `kubectl port-forward`, and docs say never to expose it.
   <!-- provenance: grill Q10 + row 12, 2026-11-09; enforced by: not yet enforced: install.yaml Service type check (plan Phase 6) -->
 - **R8** — Kubelet connections always verify TLS; the app never uses `nodes/proxy` or skips verification.
-  <!-- provenance: grill row 4, 2026-11-09; enforced by: not yet enforced: unit test that the kubelet client refuses an unverified cert (plan Phase 0) -->
+  <!-- provenance: grill row 4, 2026-11-09; enforced by: `internal/kubelet/client_test.go` TestClientRefusesUnverifiedCert (fails when verification is disabled; ADR-005) -->
 - **R9** — The image serves every UI asset; the page makes no external network request at runtime.
-  <!-- provenance: AGENTS.md UI standard, 2026-11-09; enforced by: AGENTS.md § Project-Specific Standards (test planned in Phase 2: Playwright request-origin check) -->
+  <!-- provenance: AGENTS.md UI standard, 2026-11-09; enforced by: `test/e2e/checks.ts` foreignRequests (validated in its must-fail state by test/e2e/web.spec.ts) -->
 - **R10** — All text on the page is at least 12px.
-  <!-- provenance: AGENTS.md UI standard, 2026-11-09; enforced by: not yet enforced: Playwright font-size check validated in its must-fail state (plan Phase 2) -->
+  <!-- provenance: AGENTS.md UI standard, 2026-11-09; enforced by: `test/e2e/checks.ts` smallText (validated in its must-fail state by test/e2e/web.spec.ts) -->
 
 ## Should — expected unless a decision says otherwise
 

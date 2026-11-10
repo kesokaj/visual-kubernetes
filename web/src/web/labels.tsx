@@ -1,6 +1,6 @@
 import type { Camera } from './camera'
 import type { Body } from './layout'
-import { SAT_RADIUS, SIZE, type Anchor, type Scene } from './scene'
+import { SIZE, type Anchor, type Scene } from './scene'
 
 // Labels are drawn in screen space, outside the zoomed world, so their size never depends on
 // the zoom: names are 14px and status lines 12px at any scale (PRD R10).
@@ -14,8 +14,6 @@ function labelText(a: Anchor): { name: string; sub: string } {
   switch (a.role) {
     case 'app':
       return { name: e.name, sub: [e.namespace, e.status].filter(Boolean).join(' · ') }
-    case 'counter':
-      return { name: e.status || `${e.count ?? 0}`, sub: '' }
     case 'sat':
       return { name: e.name, sub: e.kind }
     default:
@@ -26,7 +24,7 @@ function labelText(a: Anchor): { name: string; sub: string } {
 // bodyBottom is how far below its centre a body's drawing reaches, in world units.
 function bodyBottom(a: Anchor): number {
   if (a.role !== 'app') return a.icon / 2
-  return a.ring > 0 ? a.ring + POD_RING_OUT : a.sats.length > 0 ? SAT_RADIUS + SIZE.sat / 2 : a.icon / 2
+  return a.ring > 0 ? a.ring + POD_RING_OUT : a.sats.length > 0 ? a.satR + SIZE.sat / 2 : a.icon / 2
 }
 
 export function Labels({ scene, bodies, cam }: { scene: Scene; bodies: Map<string, Body>; cam: Camera }) {

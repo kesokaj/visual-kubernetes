@@ -1,9 +1,11 @@
 import { Icon, iconFor } from '../icons/sprite'
+import type { Pulse } from '../lib/motion'
 import type { Entity } from '../lib/wire'
 import type { Body } from './layout'
-import { SAT_RADIUS, SIZE, type Anchor, type Link, type Scene } from './scene'
+import { Halo, PulseRing } from './marks'
+import { SIZE, type Anchor, type Link, type Scene } from './scene'
 
-type Pos = { x: number; y: number }
+export type Pos = { x: number; y: number }
 
 export function posOf(bodies: Map<string, Body>, id: string): Pos | null {
   const b = bodies.get(id)
@@ -43,46 +45,57 @@ export function podPositions(a: Anchor, c: Pos): Pos[] {
 // pod ring.
 function satPositions(a: Anchor, c: Pos): Pos[] {
   const n = a.sats.length
-  const r = SAT_RADIUS
   return a.sats.map((_, i) => {
     const t = -Math.PI / 4 + (i / Math.max(1, n)) * Math.PI * 2
-    return { x: c.x + Math.cos(t) * r, y: c.y + Math.sin(t) * r }
+    return { x: c.x + Math.cos(t) * a.satR, y: c.y + Math.sin(t) * a.satR }
   })
 }
 
-function Pod({ pod, at, color }: { pod: Entity; at: Pos; color: string | undefined }) {
+type PodProps = { pod: Entity; at: Pos; color: string | undefined; arriving: boolean; selected: boolean }
+
+function Pod({ pod, at, color, arriving, selected }: PodProps) {
   const r = SIZE.pod / 2 + 2
+  const cls = ['pod-ring', color ? '' : 'pending', selected ? 'sel' : ''].filter(Boolean).join(' ')
   return (
-    <g data-id={pod.id} data-role="pod" data-node={pod.nodeName ?? ''} data-status={pod.status}>
-      <circle
-        className={color ? 'pod-ring' : 'pod-ring pending'}
-        cx={at.x}
-        cy={at.y}
-        r={r}
-        stroke={color ?? '#94a3b8'}
-      />
+    <g
+      data-id={pod.id}
+      data-role="pod"
+      data-node={pod.nodeName ?? ''}
+      data-status={pod.status}
+      className={arriving ? 'arriving' : undefined}
+    >
+      <circle className={cls} cx={at.x} cy={at.y} r={r} stroke={color ?? '#94a3b8'} />
       <Icon name="pod" size={SIZE.pod} x={at.x} y={at.y} />
     </g>
   )
 }
 
-// AnchorView draws one body: its icon, and for an app its satellites and pod ring.
-export function AnchorView({ a, at, scene }: { a: Anchor; at: Pos; scene: Scene }) {
+export type Marks = { pulse: Pulse | undefined; now: number; selected: string | null; arriving: ReadonlySet<string> }
+
+// AnchorView draws one body: its icon, and for an app its halo, pulse, satellites and pod ring.
+export function AnchorView({ a, at, scene, marks }: { a: Anchor; at: Pos; scene: Scene; marks: Marks }) {
   const sys = a.entity.filterGroup === 'system'
+  const app = a.role === 'app'
+  const statics = scene.statics.get(a.id)
   return (
     <g
       data-id={a.id}
       data-role={a.role}
       data-kind={a.entity.kind}
-      data-pods={a.role === 'app' ? a.pods.length : undefined}
+      data-pods={app ? a.pods.length : undefined}
+      data-size={app ? a.icon : undefined}
+      data-measure={app ? a.measure : undefined}
+      data-top={app && a.top > 0 ? a.top : undefined}
+      data-pulses={app ? (marks.pulse?.n ?? 0) : undefined}
+      data-statics={statics ? statics.length : undefined}
+      data-selected={marks.selected === a.id ? 'true' : undefined}
       className={sys ? 'sys' : undefined}
     >
-      {a.role === 'app' && a.ring > 0 && <circle className="ring" cx={at.x} cy={at.y} r={a.ring} />}
-      {a.role === 'counter' ? (
-        <circle className="counter" cx={at.x} cy={at.y} r={SIZE.counter / 2} />
-      ) : (
-        <Icon name={iconFor(a.entity.kind, a.role === 'app')} size={a.icon} x={at.x} y={at.y} />
-      )}
+      {a.top > 0 && <Halo at={at} r={a.icon * 1.05} />}
+      {app && a.ring > 0 && <circle className="ring" cx={at.x} cy={at.y} r={a.ring} />}
+      {app && <PulseRing pulse={marks.pulse} now={marks.now} at={at} r={a.icon / 2 + 6} />}
+      {marks.selected === a.id && <circle className="sel-ring" cx={at.x} cy={at.y} r={a.icon / 2 + 8} />}
+      <Icon name={iconFor(a.entity.kind, app)} size={a.icon} x={at.x} y={at.y} />
       {a.role === 'node' && <NodeDot a={a} at={at} scene={scene} />}
       {satPositions(a, at).map((p, i) => {
         const s = a.sats[i]
@@ -95,7 +108,14 @@ export function AnchorView({ a, at, scene }: { a: Anchor; at: Pos; scene: Scene 
       {podPositions(a, at).map((p, i) => {
         const pod = a.pods[i]
         return pod ? (
-          <Pod key={pod.id} pod={pod} at={p} color={pod.nodeName ? scene.nodeColor.get(pod.nodeName) : undefined} />
+          <Pod
+            key={pod.id}
+            pod={pod}
+            at={p}
+            color={pod.nodeName ? scene.nodeColor.get(pod.nodeName) : undefined}
+            arriving={marks.arriving.has(pod.id)}
+            selected={marks.selected === pod.id}
+          />
         ) : null
       })}
     </g>

@@ -1,4 +1,5 @@
 import playwright from '@playwright/test'
+import { SERVERS, urlOf, type ServerName } from '../test/e2e/servers'
 
 // web/package.json is "type": "module", so Node loads this file as native ESM, and
 // @playwright/test is CommonJS without static named exports: take them off the default,
@@ -7,9 +8,21 @@ const { defineConfig, devices } = playwright as unknown as typeof import('@playw
 
 // The e2e tier runs against the Go binary serving the embedded build and replaying a recorded
 // stream, never against `vite dev` (plan Phase 3, GUIDE-testing). `pnpm build` must have run:
-// the binary embeds cmd/visual-kubernetes/ui/dist at compile time.
-const port = Number(process.env.VK_E2E_PORT ?? 18080)
-const fixture = process.env.VK_E2E_FIXTURE ?? 'test/fixtures/streams/deploy-scale.ndjson'
+// the binary embeds cmd/visual-kubernetes/ui/dist at compile time. Each recorded stream gets
+// its own server (test/e2e/servers.ts); specs pick one with test.use({ baseURL }). The
+// telemetry stream is written by test/e2e/fixtures/telemetry.mjs into .agents/scratch/ first.
+function server(name: ServerName) {
+  const { port, fixture } = SERVERS[name]
+  const run = `go run ./cmd/visual-kubernetes --replay ${fixture} --addr 127.0.0.1:${port}`
+  return {
+    command: name === 'telemetry' ? `node test/e2e/fixtures/telemetry.mjs ${fixture} && ${run}` : run,
+    cwd: '..',
+    url: `${urlOf(name)}/healthz`,
+    reuseExistingServer: false,
+    timeout: 120_000,
+    stdout: 'pipe' as const,
+  }
+}
 
 export default defineConfig({
   testDir: '../test/e2e',
@@ -19,17 +32,10 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: `http://127.0.0.1:${port}`,
+    baseURL: urlOf('deployScale'),
     viewport: { width: 1600, height: 900 },
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 900 } } }],
-  webServer: {
-    command: `go run ./cmd/visual-kubernetes --replay ${fixture} --addr 127.0.0.1:${port}`,
-    cwd: '..',
-    url: `http://127.0.0.1:${port}/healthz`,
-    reuseExistingServer: false,
-    timeout: 120_000,
-    stdout: 'pipe',
-  },
+  webServer: (Object.keys(SERVERS) as ServerName[]).map(server),
 })

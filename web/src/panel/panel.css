@@ -1,0 +1,286 @@
+/* Click panel, corner counters and the Phase 4 encodings (design/mockup-v3.html:43-72).
+   Every text size here is 12px or more (PRD R10). */
+
+.vk .panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.vk .p-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 12px 18px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.vk .p-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+}
+.vk .p-title {
+  flex: 1;
+  min-width: 0;
+}
+.vk .p-title h4 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vk .p-title span {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.vk .p-close {
+  border: 0;
+  background: #f1f5f9;
+  color: var(--ink-2);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.vk .p-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 18px 18px;
+}
+.vk .p-sec {
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.vk .p-sec:last-child {
+  border-bottom: 0;
+}
+.vk .p-sec h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.vk .muted {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.vk .err {
+  color: #b91c1c;
+  font-size: 13px;
+  margin: 0;
+}
+.vk .p-sec p {
+  margin: 0;
+}
+.vk .kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+.vk .kv div {
+  display: contents;
+}
+.vk .kv dt {
+  color: var(--ink-2);
+}
+.vk .kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.vk .met {
+  margin-bottom: 8px;
+}
+.vk .met-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.vk .met-head b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.vk .spark {
+  width: 100%;
+  height: 34px;
+  display: block;
+}
+.vk .spark polyline {
+  fill: none;
+  stroke: var(--k8s);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.vk pre.logs,
+.vk pre.yaml {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.vk .p-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vk .p-btn {
+  font: 12px var(--font);
+  color: var(--k8s);
+  background: none;
+  border: 1px solid #dbe4f5;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.vk .events,
+.vk .caps,
+.vk .conds,
+.vk .plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+}
+.vk .events li,
+.vk .caps li,
+.vk .conds li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  flex-wrap: wrap;
+}
+.vk .events li.warn b,
+.vk .conds li.warn b {
+  color: #b45309;
+}
+.vk .ev-time {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.vk .cap-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  align-self: center;
+}
+.vk .cap-dot.ok {
+  background: #16a34a;
+}
+.vk .cap-dot.missing {
+  background: #94a3b8;
+}
+.vk .cap-dot.denied,
+.vk .cap-dot.error {
+  background: #dc2626;
+}
+.vk .cap-dot.unreachable {
+  background: #f59e0b;
+}
+.vk .cap-state {
+  color: var(--ink-2);
+}
+.vk .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vk .chip {
+  font: 12px var(--font);
+  background: #f1f5f9;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+/* corner counters: top-left, out of the way of the pill (bottom-left) and the panel (right) */
+.vk .counters {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+.vk .counter-chip {
+  font-size: 12px;
+  color: var(--ink-2);
+  background: #fff;
+  border: 1px dashed var(--ink-3);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+/* encodings */
+.vk .halo {
+  pointer-events: none;
+}
+.vk .pulse {
+  fill: none;
+  stroke: var(--k8s);
+  stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: vk-pulse 1.4s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes vk-pulse {
+  from {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+.vk .arriving {
+  opacity: 0.25;
+}
+.vk .travel {
+  pointer-events: none;
+}
+.vk .sel-ring {
+  fill: none;
+  stroke: var(--k8s);
+  stroke-width: 2.5;
+}
+.vk .pod-ring.sel {
+  stroke: var(--k8s);
+  stroke-width: 3.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vk .pulse {
+    animation: none;
+    opacity: 0;
+  }
+}

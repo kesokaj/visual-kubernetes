@@ -29,6 +29,7 @@ const LINK = {
 // position and velocity, so the web reshapes instead of jumping when the cluster changes.
 export class Layout {
   readonly bodies = new Map<string, Body>()
+  private linkKey = ''
   private readonly sim: Simulation<Body, BodyLink>
   private readonly links = forceLink<Body, BodyLink>()
     .id((b) => b.id)
@@ -49,12 +50,22 @@ export class Layout {
 
   update(scene: Scene): void {
     const next = new Map<string, Body>()
+    let grown = false // a body or link appeared or left
+    let resized = false // only radii changed (a metrics cycle resizing apps)
     for (const a of scene.anchors.values()) {
-      const b = this.bodies.get(a.id) ?? this.spawn(a, scene)
+      const old = this.bodies.get(a.id)
+      const b = old ?? this.spawn(a, scene)
+      if (!old) grown = true
+      else if (Math.abs(b.r - a.r) > 12) grown = true // a ring appeared or left (Pods filter)
+      else if (Math.abs(b.r - a.r) > 0.5) resized = true
       b.r = a.r
       b.role = a.role
       next.set(a.id, b)
     }
+    if (next.size !== this.bodies.size) grown = true
+    const linkKey = scene.links.map((l) => l.id).join('\n')
+    if (linkKey !== this.linkKey) grown = true
+    this.linkKey = linkKey
     this.bodies.clear()
     for (const [id, b] of next) this.bodies.set(id, b)
     const hub = this.bodies.get('cp/apiserver')
@@ -64,7 +75,10 @@ export class Layout {
     }
     this.sim.nodes([...this.bodies.values()])
     this.links.links(scene.links.map((l) => ({ source: l.from, target: l.to, kind: l.kind })))
-    this.sim.alpha(Math.max(this.sim.alpha(), 0.5)).restart()
+    // A changed cluster reheats the web; a resize only nudges it, so a metrics cycle every
+    // 5 s does not keep the layout boiling. A status-only change does not move anything.
+    if (grown) this.sim.alpha(Math.max(this.sim.alpha(), 0.5)).restart()
+    else if (resized) this.sim.alpha(Math.max(this.sim.alpha(), 0.12)).restart()
   }
 
   stop(): void {

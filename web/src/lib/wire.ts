@@ -36,12 +36,29 @@ export type EdgeKind = (typeof EDGE_KINDS)[number]
 
 export type Edge = { id: string; from: string; to: string; kind: EdgeKind }
 
+// Capability is one source's state (probe states: ok, missing, denied, unreachable, error).
+export type Capability = { state: string; detail: string }
+export type Capabilities = Record<string, Capability>
+
+// SizeBy is the measure app bubbles are sized by this cycle (PRD S2, plan D24).
+export const SIZE_BY = ['network', 'cpu', 'pods'] as const
+export type SizeBy = (typeof SIZE_BY)[number]
+
+export type Sample = { id: string; rxBps?: number; txBps?: number; cpuMilli?: number; memBytes?: number }
+
+// K8sEvent is the page-side shape of an `event` SSE message (plan D32): `id` is the entity the
+// Event is about (its regarding object, as a D13 id).
+export type K8sEvent = { id: string; type: string; reason: string; message: string; at: string }
+
 export type StreamEvent =
-  | { type: 'snapshot'; entities: Entity[]; edges: Edge[] }
+  | { type: 'snapshot'; entities: Entity[]; edges: Edge[]; capabilities: Capabilities }
   | { type: 'upsert'; entity: Entity }
   | { type: 'delete'; id: string }
   | { type: 'edgeUpsert'; edge: Edge }
   | { type: 'edgeDelete'; id: string }
+  | { type: 'metrics'; sizeBy: SizeBy; samples: Sample[] }
+  | { type: 'capabilities'; capabilities: Capabilities }
+  | { type: 'event'; event: K8sEvent }
 
 type Obj = Record<string, unknown>
 
@@ -105,8 +122,49 @@ function keepValid<T>(items: unknown[], guard: (v: unknown) => v is T, what: str
   return ok
 }
 
-// parseEvent turns one SSE message into a typed event, or null for types this phase does not
-// draw (metrics, capabilities, event) and for payloads that fail their guard.
+function optNum(v: unknown): boolean {
+  return v === undefined || (typeof v === 'number' && Number.isFinite(v))
+}
+
+export function isSample(v: unknown): v is Sample {
+  return (
+    isObj(v) && isStr(v.id) && optNum(v.rxBps) && optNum(v.txBps) && optNum(v.cpuMilli) && optNum(v.memBytes)
+  )
+}
+
+// capabilitiesOf keeps the well-formed entries of a capabilities map and drops the rest.
+function capabilitiesOf(v: unknown): Capabilities {
+  const out: Capabilities = {}
+  if (!isObj(v)) return out
+  for (const [name, c] of Object.entries(v)) {
+    if (isObj(c) && isStr(c.state)) out[name] = { state: c.state, detail: isStr(c.detail) ? c.detail : '' }
+  }
+  return out
+}
+
+export function isK8sEvent(v: unknown): v is K8sEvent {
+  return isObj(v) && [v.id, v.type, v.reason, v.message, v.at].every(isStr)
+}
+
+// parseTelemetry covers the events that carry no entities: metrics, capabilities and
+// Kubernetes Events.
+function parseTelemetry(type: string, v: Obj): StreamEvent | null {
+  switch (type) {
+    case 'metrics': {
+      const sizeBy = (SIZE_BY as readonly unknown[]).includes(v.sizeBy) ? (v.sizeBy as SizeBy) : 'pods'
+      return { type, sizeBy, samples: (Array.isArray(v.samples) ? v.samples : []).filter(isSample) }
+    }
+    case 'capabilities':
+      return { type, capabilities: capabilitiesOf(v.capabilities) }
+    case 'event':
+      return isK8sEvent(v.k8sEvent) ? { type, event: v.k8sEvent } : null
+    default:
+      return null
+  }
+}
+
+// parseEvent turns one SSE message into a typed event, or null for types this page does not
+// draw yet (chain, flow) and for payloads that fail their guard.
 export function parseEvent(type: string, data: string): StreamEvent | null {
   let v: unknown
   try {
@@ -119,7 +177,7 @@ export function parseEvent(type: string, data: string): StreamEvent | null {
     case 'snapshot': {
       const ents = keepValid(Array.isArray(v.entities) ? v.entities : [], isEntity, 'entities')
       const edges = keepValid(Array.isArray(v.edges) ? v.edges : [], isEdge, 'edges')
-      return { type, entities: ents.map(normalize), edges }
+      return { type, entities: ents.map(normalize), edges, capabilities: capabilitiesOf(v.capabilities) }
     }
     case 'upsert':
       return isEntity(v.entity) ? { type, entity: normalize(v.entity) } : null
@@ -129,6 +187,6 @@ export function parseEvent(type: string, data: string): StreamEvent | null {
     case 'edgeDelete':
       return isStr(v.id) ? { type, id: v.id } : null
     default:
-      return null
+      return parseTelemetry(type, v)
   }
 }

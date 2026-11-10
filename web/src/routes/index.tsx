@@ -4,6 +4,7 @@ import { FilterPill, allOn } from '../filter/FilterPill'
 import { Sprite } from '../icons/sprite'
 import { Graph, connect } from '../lib/graph'
 import { parseEvent, type FilterGroup } from '../lib/wire'
+import { Panel } from '../panel/Panel'
 import { Web } from '../web/Web'
 
 export const Route = createFileRoute('/')({ component: Page, ssr: false })
@@ -16,11 +17,12 @@ function typing(t: EventTarget | null): boolean {
   return t instanceof HTMLInputElement && t.type !== 'checkbox' && t.type !== 'radio'
 }
 
-// Presenter keys this phase: F re-fits the camera, V shows or hides the filter pill.
-function useKeys(onFit: () => void, onTogglePill: () => void) {
+// Presenter keys: F re-fits the camera, V shows or hides the filter pill, Esc closes the panel.
+function useKeys(onFit: () => void, onTogglePill: () => void, onEscape: () => void) {
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return
+      if (ev.key === 'Escape') return onEscape()
       if (typing(ev.target)) return
       const k = ev.key.toLowerCase()
       if (k === 'f') onFit()
@@ -28,7 +30,7 @@ function useKeys(onFit: () => void, onTogglePill: () => void) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onFit, onTogglePill])
+  }, [onFit, onTogglePill, onEscape])
 }
 
 function Page() {
@@ -36,11 +38,13 @@ function Page() {
   const [on, setOn] = useState<ReadonlySet<FilterGroup>>(allOn)
   const [fitNonce, setFitNonce] = useState(0)
   const [pill, setPill] = useState(true)
+  const [selected, setSelected] = useState<string | null>(null)
 
   useEffect(() => connect(graph, parseEvent), [graph])
   const [fitAgain] = useState(() => () => setFitNonce((n) => n + 1))
   const [togglePill] = useState(() => () => setPill((p) => !p))
-  useKeys(fitAgain, togglePill)
+  const [close] = useState(() => () => setSelected(null))
+  useKeys(fitAgain, togglePill, close)
 
   const changeFilter = (next: ReadonlySet<FilterGroup>) => {
     setOn(next)
@@ -50,8 +54,9 @@ function Page() {
   return (
     <main className="vk">
       <Sprite />
-      <Web graph={graph} on={on} fitNonce={fitNonce} />
+      <Web graph={graph} on={on} fitNonce={fitNonce} selected={selected} onSelect={setSelected} />
       {pill && <FilterPill on={on} onChange={changeFilter} />}
+      {selected && <Panel key={selected} graph={graph} id={selected} onClose={close} onSelect={setSelected} />}
     </main>
   )
 }
