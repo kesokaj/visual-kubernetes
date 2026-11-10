@@ -30,4 +30,4 @@ Phase 5 — Teaching replay and scenarios · PLAN-2026-11-09-1906-plan-visual-ku
 - `test/kind/serve.sh`: scripted in-cluster serve check (port-forward + curl `/healthz`, `/api/stream`) replacing the manual Phase 2 run; fold into Phase 7's install e2e (added 2026-11-10, Phase 2 review finding 2).
 - Server-side `event` SSE emission so the panel shows live Events (page side ready, plan D32); do it with the D29 Task (added 2026-11-10, Phase 4 review finding 1).
 - Perf probe at G3 scale, 150 bubbles / 1,000 pods (the current fixture gives about 107 / 498) (added 2026-11-10, Phase 4 review finding 4).
-- Docs refresh: AGENTS.md / TDD.md `web/*.ts` paths, "click panel is Phase 4", SDD.md `internal/hubble`, GUIDE-testing (5 servers, 27 tests), the remaining `fyr check` findings (added 2026-11-10, Phase 4 review and verifier).
+- Docs refresh (approved by the operator 2026-11-10 13:23, queued as a Task before Phase 5): AGENTS.md / TDD.md `web/*.ts` paths, "click panel is Phase 4", SDD.md `internal/hubble`, GUIDE-testing (5 servers, 27 tests), the remaining `fyr check` findings (added 2026-11-10, Phase 4 review and verifier).
