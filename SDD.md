@@ -22,7 +22,7 @@ flowchart LR
 
 ## Components
 
-No code yet. The components below are planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
+Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0) and `internal/watch`, `internal/model` (Phase 1). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
 
 | ID | Component | Responsibility | Satisfies |
 |---|---|---|---|
@@ -34,7 +34,7 @@ No code yet. The components below are planned in PLAN-2026-11-09-1906-plan-visua
 
 ## Flows
 
-No flows are implemented yet. The first flow will be cluster watch → model → SSE → page, drawn here when it exists.
+Built: cluster watch → model. Informers (`internal/watch`) hand batched object changes to `model.Apply`, which recomputes the view and returns deltas that map one-for-one to SSE events. Planned next: model → SSE → page (Phase 2), drawn here when it exists.
 
 ## Decisions
 

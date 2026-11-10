@@ -6,7 +6,7 @@
 
 ## Setup Commands
 
-One Go module (`github.com/kesokaj/visual-kubernetes`, go 1.27, client-go v0.37). Phase 0 ships only the `probe` subcommand; the UI server (embedded TanStack Start over SSE) lands in Phase 2.
+One Go module (`github.com/kesokaj/visual-kubernetes`, go 1.27, client-go v0.37). The binary has only the `probe` subcommand so far; `internal/watch` and `internal/model` (Phase 1) are not wired into it yet. The UI server (embedded TanStack Start over SSE) lands in Phase 2.
 
 ```bash
 go build ./...
@@ -14,6 +14,7 @@ go vet ./... && go test -race ./...
 test/kind/up.sh        # kind cluster on Colima; kubeconfig in .agents/scratch/kind/kubeconfig
 go run ./cmd/visual-kubernetes probe --kubeconfig .agents/scratch/kind/kubeconfig
 test/kind/probe.sh     # image build + kind load + in-cluster probe
+go run ./test/fixturegen   # rewrite test/fixtures/streams/*.ndjson after a model change (TestFixturesAreCurrent fails when stale)
 ```
 
 `visual-kubernetes probe` prints `<source> ok|missing|denied|unreachable|error <detail>` for discovery, leases, events, endpointslices, metrics.k8s.io, kubelet, apiserver-metrics, readyz and hubble-relay, and exits 0 whatever the sources report (1 only when no client can be built, 2 on usage). Always pass `--kubeconfig` locally: without it the standard loading rules pick the operator's current context.
@@ -47,6 +48,9 @@ Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). 
 | `cmd/visual-kubernetes/` | The binary's entry point (`probe` subcommand in Phase 0) |
 | `internal/kubelet/` | Kubelet Summary client, TLS always verified (R8, ADR-005) |
 | `internal/probe/` | One-shot capability probe and the five source states |
+| `internal/watch/` | Discovery + dynamic informers for the RBAC groups (Secrets never listed, forbidden kinds skipped, cache trimmed) |
+| `internal/model/` | Live model: entity ids, apps and satellites, edges, S5 folding, deltas and SSE payloads; `modeltest/` builders |
+| `test/fixturegen/` | Writes the recorded streams in `test/fixtures/streams/` (deterministic, from `modeltest` objects) |
 | `test/kind/` | kind fixture (`up.sh`), probe RBAC and Pod, `probe.sh` |
 | `PRD.md` | What and why: problem, goals, the non-negotiable requirements |
 | `SDD.md` | How the parts fit: components, flows, decisions |
