@@ -14,7 +14,7 @@ pnpm -C web install
 pnpm -C web build && go build ./...      # build the page first: go:embed picks it up at compile time
 go vet ./... && go test -race ./...
 pnpm -C web exec playwright install --only-shell chromium   # once
-pnpm -C web exec playwright test         # e2e: runs the binary with --replay on 127.0.0.1:18080
+pnpm -C web exec playwright test         # e2e: runs the binary with --replay on 127.0.0.1:18080–18084
 test/kind/up.sh        # kind cluster on Colima; kubeconfig in .agents/scratch/kind/kubeconfig
 go run ./cmd/visual-kubernetes probe --kubeconfig .agents/scratch/kind/kubeconfig
 go run ./cmd/visual-kubernetes --kubeconfig .agents/scratch/kind/kubeconfig   # serve on 127.0.0.1:8080
