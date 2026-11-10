@@ -1,0 +1,40 @@
+{
+  "node": {
+    "nodeName": "node-1",
+    "startTime": "2026-11-10T08:00:00Z",
+    "cpu": {"time": "2026-11-10T09:00:00Z", "usageNanoCores": 412000000, "usageCoreNanoSeconds": 9120000000000},
+    "memory": {"time": "2026-11-10T09:00:00Z", "workingSetBytes": 1503238553},
+    "network": {"time": "2026-11-10T09:00:00Z", "name": "eth0", "rxBytes": 9100000000, "txBytes": 4200000000}
+  },
+  "pods": [
+    {
+      "podRef": {"name": "web-7d4b9c-a", "namespace": "shop", "uid": "0b9a1c52-1f0e-4f63-9d0c-6f2f3f7e1a01"},
+      "startTime": "2026-11-10T08:10:00Z",
+      "cpu": {"time": "2026-11-10T09:00:00Z", "usageNanoCores": 12000000, "usageCoreNanoSeconds": 41000000000},
+      "memory": {"time": "2026-11-10T09:00:00Z", "workingSetBytes": 31457280},
+      "network": {"time": "2026-11-10T09:00:00Z", "name": "eth0", "rxBytes": 1000000, "txBytes": 500000,
+        "interfaces": [{"name": "eth0", "rxBytes": 1000000, "txBytes": 500000}]}
+    },
+    {
+      "podRef": {"name": "web-7d4b9c-b", "namespace": "shop", "uid": "0b9a1c52-1f0e-4f63-9d0c-6f2f3f7e1a02"},
+      "startTime": "2026-11-10T08:10:00Z",
+      "cpu": {"time": "2026-11-10T09:00:00Z", "usageNanoCores": 9000000, "usageCoreNanoSeconds": 38000000000},
+      "memory": {"time": "2026-11-10T09:00:00Z", "workingSetBytes": 29360128},
+      "network": {"time": "2026-11-10T09:00:00Z", "name": "eth0", "rxBytes": 2000000, "txBytes": 800000,
+        "interfaces": [{"name": "eth0", "rxBytes": 2000000, "txBytes": 800000}]}
+    },
+    {
+      "podRef": {"name": "kube-proxy-n1", "namespace": "kube-system", "uid": "5c1d7e3a-8b2f-4c9e-a1d4-2e7f9b0c3d04"},
+      "startTime": "2026-11-10T08:00:05Z",
+      "cpu": {"time": "2026-11-10T09:00:00Z", "usageNanoCores": 1500000, "usageCoreNanoSeconds": 6100000000},
+      "memory": {"time": "2026-11-10T09:00:00Z", "workingSetBytes": 18874368},
+      "network": {"time": "2026-11-10T09:00:00Z", "name": "eth0", "rxBytes": 9100000000, "txBytes": 4200000000,
+        "interfaces": [{"name": "eth0", "rxBytes": 9100000000, "txBytes": 4200000000}]}
+    },
+    {
+      "podRef": {"name": "ghost-1", "namespace": "shop", "uid": "9f0e1d2c-3b4a-4596-8778-695a4b3c2d05"},
+      "startTime": "2026-11-10T08:30:00Z",
+      "network": {"time": "2026-11-10T09:00:00Z", "name": "eth0", "rxBytes": 7000, "txBytes": 7000}
+    }
+  ]
+}

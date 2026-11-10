@@ -6,13 +6,15 @@
 
 ## Setup Commands
 
-One Go module (`github.com/kesokaj/visual-kubernetes`, go 1.27, client-go v0.37). The binary has only the `probe` subcommand so far; `internal/watch` and `internal/model` (Phase 1) are not wired into it yet. The UI server (embedded TanStack Start over SSE) lands in Phase 2.
+One Go module (`github.com/kesokaj/visual-kubernetes`, go 1.27, client-go v0.37). The binary serves the live model over SSE (`/api/stream`, `/api/objects`, `/api/logs`, `/healthz`) and has a `probe` subcommand; the embedded page (TanStack Start) lands in Phase 3.
 
 ```bash
 go build ./...
 go vet ./... && go test -race ./...
 test/kind/up.sh        # kind cluster on Colima; kubeconfig in .agents/scratch/kind/kubeconfig
 go run ./cmd/visual-kubernetes probe --kubeconfig .agents/scratch/kind/kubeconfig
+go run ./cmd/visual-kubernetes --kubeconfig .agents/scratch/kind/kubeconfig   # serve on 127.0.0.1:8080
+go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson   # no cluster
 test/kind/probe.sh     # image build + kind load + in-cluster probe
 go run ./test/fixturegen   # rewrite test/fixtures/streams/*.ndjson after a model change (TestFixturesAreCurrent fails when stale)
 ```
@@ -45,11 +47,13 @@ Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). 
 | Path | Purpose |
 |------|---------|
 | `design/mockup-v3.html` | Approved visual reference (simulated data, self-contained) |
-| `cmd/visual-kubernetes/` | The binary's entry point (`probe` subcommand in Phase 0) |
+| `cmd/visual-kubernetes/` | The binary: serve (live or `--replay`) and `probe` |
 | `internal/kubelet/` | Kubelet Summary client, TLS always verified (R8, ADR-005) |
 | `internal/probe/` | One-shot capability probe and the five source states |
 | `internal/watch/` | Discovery + dynamic informers for the RBAC groups (Secrets never listed, forbidden kinds skipped, cache trimmed) |
 | `internal/model/` | Live model: entity ids, apps and satellites, edges, S5 folding, deltas and SSE payloads; `modeltest/` builders |
+| `internal/sources/` | 5 s collector: metrics.k8s.io, kubelet network rates, `/readyz`, `/metrics`, Leases → `metrics`, `capabilities`, `cp/*` |
+| `internal/stream/` | SSE hub (15 min resume ring), HTTP endpoints, Host guard, replay of recorded streams |
 | `test/fixturegen/` | Writes the recorded streams in `test/fixtures/streams/` (deterministic, from `modeltest` objects) |
 | `test/kind/` | kind fixture (`up.sh`), probe RBAC and Pod, `probe.sh` |
 | `PRD.md` | What and why: problem, goals, the non-negotiable requirements |

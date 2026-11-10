@@ -16,7 +16,7 @@ import (
 
 func TestRunUsage(t *testing.T) {
 	log := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	for _, args := range [][]string{nil, {"serve"}, {"probe", "--bogus"}} {
+	for _, args := range [][]string{{"serve"}, {"--bogus"}, {"probe", "--bogus"}, {"probe", "extra"}} {
 		var stderr bytes.Buffer
 		if code := run(t.Context(), args, io.Discard, &stderr, log); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)

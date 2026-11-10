@@ -1,5 +1,6 @@
-// Command visual-kubernetes is the read-only cluster visualizer. Phase 0 ships only the
-// `probe` subcommand; the UI server lands in Phase 2 (PLAN-2026-11-09-1906).
+// Command visual-kubernetes is the read-only cluster visualizer: by default it watches the
+// cluster and serves the live stream (or plays a recording with --replay); `probe` prints the
+// state of each data source (PLAN-2026-11-09-1906).
 package main
 
 import (
@@ -23,10 +24,16 @@ import (
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
 )
 
-const usage = `usage: visual-kubernetes probe [--kubeconfig PATH]
+const usage = `usage: visual-kubernetes [--kubeconfig PATH] [--addr ADDR] [--replay FILE]
+       visual-kubernetes probe [--kubeconfig PATH]
 
-probe  print one line per data source: <source> ok|missing|denied|unreachable|error <detail>
+(default)  watch the cluster and serve /api/stream, /api/objects, /api/logs and /healthz;
+           --addr defaults to 127.0.0.1:8080 outside a cluster and :8080 inside one;
+           --replay FILE plays a recorded NDJSON stream instead of contacting any cluster
+probe      print one line per data source: <source> ok|missing|denied|unreachable|error <detail>
 `
+
+const kubeconfigHelp = "path to a kubeconfig; default: in-cluster when KUBERNETES_SERVICE_HOST is set, else the standard loading rules"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -36,14 +43,39 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, log *slog.Logger) int {
-	if len(args) == 0 || args[0] != "probe" {
-		_, _ = fmt.Fprint(stderr, usage) // usage text; nothing to do if stderr fails
+	if len(args) > 0 && args[0] == "probe" {
+		return runProbeCommand(ctx, args[1:], stdout, stderr, log)
+	}
+	fs := flag.NewFlagSet("visual-kubernetes", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { _, _ = fmt.Fprint(stderr, usage) } // usage text; nothing to do if stderr fails
+	var o serveOptions
+	fs.StringVar(&o.kubeconfig, "kubeconfig", "", kubeconfigHelp)
+	fs.StringVar(&o.addr, "addr", "", "listen address (default 127.0.0.1:8080 locally, :8080 in a cluster)")
+	fs.StringVar(&o.replay, "replay", "", "serve a recorded NDJSON stream instead of a cluster")
+	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if fs.NArg() > 0 || (o.replay != "" && o.kubeconfig != "") {
+		fs.Usage()
+		return 2
+	}
+	if err := runServe(ctx, o, log); err != nil {
+		log.Error("serve failed", "error", err.Error())
+		return 1
+	}
+	return 0
+}
+
+func runProbeCommand(ctx context.Context, args []string, stdout, stderr io.Writer, log *slog.Logger) int {
 	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	kubeconfig := fs.String("kubeconfig", "", "path to a kubeconfig; default: in-cluster when KUBERNETES_SERVICE_HOST is set, else the standard loading rules")
-	if err := fs.Parse(args[1:]); err != nil {
+	kubeconfig := fs.String("kubeconfig", "", kubeconfigHelp)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprint(stderr, usage) // usage text; nothing to do if stderr fails
 		return 2
 	}
 	if err := runProbe(ctx, *kubeconfig, stdout, log); err != nil {
