@@ -173,3 +173,30 @@ test.describe('missing sources', () => {
     expect(await smallText(page)).toEqual([])
   })
 })
+
+// The recorded deploy-scale stream carries the Kubernetes Events the backend emits (D29):
+// its own server, so this spec is the first subscriber and sees them replayed live.
+test.describe('replayed Events', () => {
+  test.use({ baseURL: urlOf('deployScaleEvents') })
+
+  test('Events recorded in a stream reach the app and pod panels', async ({ page }) => {
+    await page.goto('/')
+    await expect(web(page).locator(`[data-layer="bodies"] > g[data-id="${WEB}"]`)).toHaveCount(1)
+    await clickBody(page, WEB)
+    const p = panel(page)
+    await expect(p).toHaveAttribute('data-panel-for', WEB)
+    const events = p.locator('[data-section="events"]')
+    // about the Deployment (the app's owner id), its ReplicaSet (the pods' owner id), its pods
+    await expect(events.locator('li[data-reason="ScalingReplicaSet"]')).toHaveCount(1, { timeout: 10_000 })
+    await expect(events.locator('li[data-reason="SuccessfulCreate"]')).toHaveCount(2, { timeout: 10_000 })
+    await expect(events.locator('li[data-reason="Scheduled"]')).toHaveCount(2, { timeout: 10_000 })
+    await expect(events).toContainText('Scaled up replica set web-7d4b9c from 2 to 4')
+    // a pod panel shows only that pod's Event
+    await p.locator('button.chip[data-pod="core/Pod/shop/web-7d4b9c-x002"]').click()
+    await expect(p).toHaveAttribute('data-panel-for', 'core/Pod/shop/web-7d4b9c-x002')
+    await expect(events.locator('li[data-reason="Scheduled"]')).toHaveCount(1)
+    await expect(events).toContainText('Successfully assigned shop/web-7d4b9c-x002 to node-2')
+    await expect(events.locator('li[data-reason="ScalingReplicaSet"]')).toHaveCount(0)
+    expect(await smallText(page)).toEqual([])
+  })
+})

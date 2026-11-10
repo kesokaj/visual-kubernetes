@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/kesokaj/visual-kubernetes/internal/model"
@@ -78,7 +80,7 @@ func daemonPod(ds *appsv1.DaemonSet, node string) *corev1.Pod {
 }
 
 // deployScale: an HPA raises web from 2 to 4 replicas; the new pods go Pending, are
-// scheduled, then become ready.
+// scheduled, then become ready. The controllers and the scheduler say so in Events.
 func deployScale() scenario {
 	ns := nodeNames(3)
 	web := newDeployment("shop", "web", 2, ns, 0, "web-config")
@@ -94,11 +96,33 @@ func deployScale() scenario {
 	fresh := []*corev1.Pod{mt.PodOf(rs, podSuffix(2)), mt.PodOf(rs, podSuffix(3))}
 	return scenario{name: "deploy-scale", caps: capabilities(nil), steps: []step{
 		{0, upserts(initial...)},
-		{1000, upserts(mt.HPA("shop", "web", "Deployment", "web", 2, 6, 4), scaled, rs)},
-		{1500, upserts(fresh[0], fresh[1])},
-		{2500, upserts(mt.Scheduled(fresh[0], "node-2"), mt.Scheduled(fresh[1], "node-3"))},
+		{1000, upserts(mt.HPA("shop", "web", "Deployment", "web", 2, 6, 4), scaled, rs,
+			normal(mt.Ref("apps/v1", "Deployment", "shop", "web"), 1000, "ScalingReplicaSet",
+				"Scaled up replica set "+rs.Name+" from 2 to 4"))},
+		{1500, upserts(fresh[0], fresh[1],
+			normal(mt.Ref("apps/v1", "ReplicaSet", "shop", rs.Name), 1500, "SuccessfulCreate",
+				"Created pod: "+fresh[0].Name),
+			normal(mt.Ref("apps/v1", "ReplicaSet", "shop", rs.Name), 1500, "SuccessfulCreate",
+				"Created pod: "+fresh[1].Name))},
+		{2500, upserts(mt.Scheduled(fresh[0], "node-2"), mt.Scheduled(fresh[1], "node-3"),
+			scheduledEvent(fresh[0], "node-2", 2500), scheduledEvent(fresh[1], "node-3", 2500))},
 		{4000, upserts(running(fresh[0], "node-2"), running(fresh[1], "node-3"))},
 	}}
+}
+
+// eventBase is the wall-clock time a recording starts; an Event at atMs is stamped
+// eventBase+atMs so reruns stay byte for byte.
+var eventBase = time.Date(2026, time.November, 10, 10, 0, 0, 0, time.UTC)
+
+// normal is a Normal Event about ref, emitted atMs into the recording.
+func normal(ref corev1.ObjectReference, atMs int64, reason, note string) *eventsv1.Event {
+	return mt.Event(ref, corev1.EventTypeNormal, reason, note, eventBase.Add(time.Duration(atMs)*time.Millisecond))
+}
+
+// scheduledEvent is the scheduler's Event for placing p on node.
+func scheduledEvent(p *corev1.Pod, node string, atMs int64) *eventsv1.Event {
+	return normal(mt.Ref("v1", "Pod", p.Namespace, p.Name), atMs, "Scheduled",
+		fmt.Sprintf("Successfully assigned %s/%s to %s", p.Namespace, p.Name, node))
 }
 
 // nodeJoin: a third node registers NotReady, turns Ready, and kube-proxy's DaemonSet
@@ -113,8 +137,10 @@ func nodeJoin() scenario {
 	return scenario{name: "node-join", caps: capabilities(nil), steps: []step{
 		{0, upserts(initial...)},
 		{1000, upserts(mt.Node("node-3", false))},
-		{3000, upserts(mt.Node("node-3", true), ds)},
-		{3500, upserts(mt.Scheduled(pending, "node-3"))},
+		{3000, upserts(mt.Node("node-3", true), ds,
+			normal(mt.Ref("v1", "Node", "", "node-3"), 3000, "NodeReady",
+				"Node node-3 status is now: NodeReady"))},
+		{3500, upserts(mt.Scheduled(pending, "node-3"), scheduledEvent(pending, "node-3", 3500))},
 		{5000, upserts(running(pending, "node-3"))},
 	}}
 }

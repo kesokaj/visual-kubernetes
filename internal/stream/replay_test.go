@@ -28,6 +28,8 @@ func TestLoadRecordingRejects(t *testing.T) {
 		"long event name":     snap + "\n" + `{"atMs":1,"event":"` + strings.Repeat("a", 33) + `","data":{}}`,
 		"typed data is wrong": snap + "\n" + `{"atMs":1,"event":"upsert","data":{"entity":"x"}}`,
 		"unknown data absent": snap + "\n" + `{"atMs":1,"event":"flow"}`,
+		"event data is wrong": snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":"x"}}`,
+		"event without id":    snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":{"reason":"X"}}}`,
 	} {
 		if _, err := LoadRecording(strings.NewReader(body)); err == nil {
 			t.Errorf("%s: LoadRecording succeeded, want an error", name)

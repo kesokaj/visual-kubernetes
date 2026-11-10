@@ -72,7 +72,7 @@ func lines(t *testing.T, name string) []line {
 // TestStreamShape checks every stream starts with a snapshot at 0 ms, never goes back in
 // time and carries only the event types the UI understands.
 func TestStreamShape(t *testing.T) {
-	known := map[string]bool{"upsert": true, "delete": true, "edgeUpsert": true, "edgeDelete": true}
+	known := map[string]bool{"upsert": true, "delete": true, "edgeUpsert": true, "edgeDelete": true, model.EventK8s: true}
 	for _, name := range streamNames {
 		ls := lines(t, name)
 		if len(ls) < 2 || ls[0].Event != "snapshot" || ls[0].AtMs != 0 {

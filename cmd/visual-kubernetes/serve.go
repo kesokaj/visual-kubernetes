@@ -134,9 +134,10 @@ func startReplay(ctx context.Context, path string, log *slog.Logger) (app, error
 	return app{handler: srv.Handler()}, nil
 }
 
-// startLive probes the sources, starts the watches into the model and the model's deltas into
-// the hub, starts the metrics collector, and returns the handler. Only a config or discovery
-// failure is an error; every other source degrades to its capability state (R4).
+// startLive probes the sources, starts the watches into the model and the model's deltas and
+// Kubernetes Events into the hub, starts the metrics collector, and returns the handler. Only a
+// config or discovery failure is an error; every other source degrades to its capability state
+// (R4).
 func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, error) {
 	cl, err := newClients(kubeconfig, log)
 	if err != nil {
@@ -152,7 +153,7 @@ func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, e
 		return app{}, err
 	}
 	w := watch.New(cs.Discovery(), cl.watchDyn, func(batch []model.Change) {
-		if err := hub.Publish(model.DeltaEvents(m.Apply(batch...))...); err != nil {
+		if err := hub.Publish(m.ApplyEvents(batch...)...); err != nil {
 			log.Error("publishing model deltas failed", "error", err.Error())
 		}
 	}, log)

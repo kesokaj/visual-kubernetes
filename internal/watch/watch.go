@@ -1,12 +1,15 @@
 // Package watch discovers the kinds of the API groups the ClusterRole names (plan D16), skips
-// Secrets and every kind the cluster forbids (logged once, never fatal), and runs one informer
-// per remaining kind, handing each add, update and delete to a sink in batches from a single
-// goroutine, so the sink never runs concurrently with itself.
+// Secrets and every kind the cluster forbids (logged once, never fatal), watches Events
+// through one API only (D29), and runs one informer per remaining kind, handing each add,
+// update and delete to a sink in batches from a single goroutine, so the sink never runs
+// concurrently with itself.
 package watch
 
 import (
 	"context"
 	"log/slog"
+	"slices"
+	"strings"
 	"sync"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -65,23 +68,16 @@ func (w *Watcher) Start(ctx context.Context) error {
 		w.log.Warn("discovery incomplete; those groups are not watched", "error", partial.Error())
 	}
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(w.dyn, 0)
-	for _, gvr := range gvrs {
+	for _, gvr := range w.oneEventAPI(ctx, gvrs) {
 		if reason := w.check(ctx, gvr); reason != "" {
-			w.mu.Lock()
-			w.skipped = append(w.skipped, Skip{Resource: gvr, Reason: reason})
-			w.mu.Unlock()
-			w.log.Warn("kind skipped", "resource", gvr.String(), "reason", reason)
+			w.skip(gvr, reason)
 			continue
 		}
 		inf := factory.ForResource(gvr).Informer()
 		if err := inf.SetTransform(trimForCache); err != nil { // only once the informer started
 			return err
 		}
-		reg, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj any) { w.enqueue(obj, false) },
-			UpdateFunc: func(_, obj any) { w.enqueue(obj, false) },
-			DeleteFunc: func(obj any) { w.enqueue(obj, true) },
-		})
+		reg, err := inf.AddEventHandler(w.handler())
 		if err != nil { // only when the informer already stopped, i.e. ctx is done
 			return err
 		}
@@ -100,6 +96,42 @@ func (w *Watcher) Start(ctx context.Context) error {
 		factory.Shutdown()
 	})
 	return nil
+}
+
+// skip records a resource that is not watched and logs why: a warning, except for the core/v1
+// Events that events.k8s.io already delivers.
+func (w *Watcher) skip(gvr schema.GroupVersionResource, reason string) {
+	w.mu.Lock()
+	w.skipped = append(w.skipped, Skip{Resource: gvr, Reason: reason})
+	slices.SortFunc(w.skipped, func(a, b Skip) int { return strings.Compare(a.Resource.String(), b.Resource.String()) })
+	w.mu.Unlock()
+	if reason == skipDuplicateEvents {
+		w.log.Info("kind skipped", "resource", gvr.String(), "reason", reason)
+		return
+	}
+	w.log.Warn("kind skipped", "resource", gvr.String(), "reason", reason)
+}
+
+// handler queues every add, delete and real update an informer delivers; relist updates that
+// carry an unchanged object are dropped (sameVersion).
+func (w *Watcher) handler() cache.ResourceEventHandlerFuncs {
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) { w.enqueue(obj, false) },
+		UpdateFunc: func(old, obj any) {
+			if !sameVersion(old, obj) {
+				w.enqueue(obj, false)
+			}
+		},
+		DeleteFunc: func(obj any) { w.enqueue(obj, true) },
+	}
+}
+
+// sameVersion reports whether an update carries an object the cache already had, as a relist
+// delivers every unchanged object; passing those on would resend every cached Event.
+func sameVersion(old, obj any) bool {
+	o, ok1 := old.(*unstructured.Unstructured)
+	n, ok2 := obj.(*unstructured.Unstructured)
+	return ok1 && ok2 && n.GetResourceVersion() != "" && o.GetResourceVersion() == n.GetResourceVersion()
 }
 
 // check lists one item to learn whether the resource can be watched. Forbidden, gone and

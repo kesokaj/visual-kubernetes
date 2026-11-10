@@ -10,13 +10,17 @@ const lastApplied = "kubectl.kubernetes.io/last-applied-configuration"
 // trimForCache is the informers' transform: it drops the parts of an object the model never
 // reads before the object enters the informer cache, so a large ConfigMap or a busy object's
 // field history cannot grow the app's memory (security review 2026-11-10, findings 1–2).
-// It removes managedFields and the last-applied annotation from every object, and data and
-// binaryData from ConfigMaps (the model draws a ConfigMap by name and references only).
+// An Event keeps only its identity and the fields the stream sends (trimEvent, plan D29).
+// Every other object loses managedFields and the last-applied annotation, and ConfigMaps
+// lose data and binaryData (the model draws a ConfigMap by name and references only).
 // Anything that is not unstructured, such as a tombstone, passes through unchanged.
 func trimForCache(obj any) (any, error) {
 	u, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		return obj, nil
+	}
+	if trimEvent(u) {
+		return u, nil
 	}
 	unstructured.RemoveNestedField(u.Object, "metadata", "managedFields")
 	unstructured.RemoveNestedField(u.Object, "metadata", "annotations", lastApplied)

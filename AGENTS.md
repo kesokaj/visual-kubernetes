@@ -14,7 +14,7 @@ pnpm -C web install
 pnpm -C web build && go build ./...      # build the page first: go:embed picks it up at compile time
 go vet ./... && go test -race ./...
 pnpm -C web exec playwright install --only-shell chromium   # once
-pnpm -C web exec playwright test         # e2e: runs the binary with --replay on 127.0.0.1:18080–18084
+pnpm -C web exec playwright test         # e2e: runs the binary with --replay on 127.0.0.1:18080–18085
 test/kind/up.sh        # kind cluster on Colima; kubeconfig in .agents/scratch/kind/kubeconfig
 go run ./cmd/visual-kubernetes probe --kubeconfig .agents/scratch/kind/kubeconfig
 go run ./cmd/visual-kubernetes --kubeconfig .agents/scratch/kind/kubeconfig   # serve on 127.0.0.1:8080
@@ -42,7 +42,7 @@ PRD R7 (ADR-008): the default install is a ClusterIP Service reached through `ku
 
 ## Testing
 
-Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`. Playwright (`test/e2e/`, config `web/playwright.config.ts`) runs against the binary, never against `vite dev`. It starts one `--replay` server per recorded stream (`test/e2e/servers.ts`): `deploy-scale` on 127.0.0.1:18080, `node-join` 18081, `missing-sources` 18082, `large-cluster` 18083, and a telemetry stream on 18084 that `test/e2e/fixtures/telemetry.mjs` writes into `.agents/scratch/e2e/` first (D35). The specs are `web`, `filter`, `wire`, `panel`, `encodings`, `folding`, `budget` and `perf` (27 tests). They include the R10 text-size and R9 same-origin checks (`test/e2e/checks.ts`), each validated in its must-fail state, and the G3 perf probe (≥ 30 fps; its must-fail state, under a 20× CPU throttle, was checked once by hand and becomes a suite test in Phase 5). The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
+Unit: `go test -race ./...` (fake clientset, hand-written fakes, httptest TLS). Integration: kind on Colima via `test/kind/up.sh` + `test/kind/probe.sh`. Playwright (`test/e2e/`, config `web/playwright.config.ts`) runs against the binary, never against `vite dev`. It starts one `--replay` server per recorded stream (`test/e2e/servers.ts`): `deploy-scale` on 127.0.0.1:18080, `node-join` 18081, `missing-sources` 18082, `large-cluster` 18083, a telemetry stream on 18084 that `test/e2e/fixtures/telemetry.mjs` writes into `.agents/scratch/e2e/` first (D35), and `deploy-scale` again on 18085 for its recorded Events, opened only by `panel.spec.ts`. The specs are `web`, `filter`, `wire`, `panel`, `encodings`, `folding`, `budget` and `perf` (28 tests). They include the R10 text-size and R9 same-origin checks (`test/e2e/checks.ts`), each validated in its must-fail state, and the G3 perf probe (≥ 30 fps; its must-fail state, under a 20× CPU throttle, was checked once by hand and becomes a suite test in Phase 5). The procedure is `GUIDE-testing` (`fyr record get GUIDE-testing`).
 
 ## Deploy
 

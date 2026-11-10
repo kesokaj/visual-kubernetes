@@ -31,8 +31,9 @@ type rawRecord struct {
 	Data  json.RawMessage `json:"data"`
 }
 
-// LoadRecording reads and validates a recorded stream. State-changing events are decoded into
-// the model's types so the hub's view follows them; other types pass through as raw JSON.
+// LoadRecording reads and validates a recorded stream. State-changing events and Kubernetes
+// Events are decoded into the model's types, so the hub's view follows the former and a
+// malformed Event fails the load; other types pass through as raw JSON.
 func LoadRecording(r io.Reader) (*Recording, error) {
 	dec := json.NewDecoder(r)
 	rec := &Recording{}
@@ -87,6 +88,8 @@ func decodeRecord(raw rawRecord, n int) (model.Event, error) {
 		data = &model.IDData{}
 	case EventCapabilities:
 		data = &CapabilitiesData{}
+	case model.EventK8s:
+		data = &model.K8sEventData{}
 	default:
 		if !json.Valid(raw.Data) {
 			return model.Event{}, fmt.Errorf("record %d: %s data is not JSON", n, raw.Event)
@@ -95,6 +98,9 @@ func decodeRecord(raw rawRecord, n int) (model.Event, error) {
 	}
 	if err := json.Unmarshal(raw.Data, data); err != nil {
 		return model.Event{}, fmt.Errorf("record %d: %s data: %w", n, raw.Event, err)
+	}
+	if e, ok := data.(*model.K8sEventData); ok && e.K8sEvent.ID == "" {
+		return model.Event{}, fmt.Errorf("record %d: event names no object id", n)
 	}
 	return model.Event{Type: raw.Event, Data: deref(data)}, nil
 }
@@ -111,6 +117,8 @@ func deref(v any) any {
 	case *model.IDData:
 		return *d
 	case *CapabilitiesData:
+		return *d
+	case *model.K8sEventData:
 		return *d
 	}
 	return v

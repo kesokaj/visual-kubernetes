@@ -100,8 +100,9 @@ type Delta struct {
 	ID     string
 }
 
-// ignoredKinds are never stored. Events are watched for other consumers (the stream's `event`
-// messages); Secrets are never watched (R2) and are dropped here too should one ever arrive.
+// ignoredKinds are never stored. Events are streamed as `event` messages by ApplyEvents
+// (k8sevent.go), never kept; Secrets are never watched (R2) and are dropped here too should
+// one ever arrive.
 var ignoredKinds = map[string]bool{"core/Event": true, "events.k8s.io/Event": true, "core/Secret": true}
 
 type view struct {

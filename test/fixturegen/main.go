@@ -1,8 +1,10 @@
 // Command fixturegen writes the recorded event streams the UI tests replay (plan D14):
 // one NDJSON file per scenario under test/fixtures/streams, each a snapshot record at
-// atMs 0 followed by the delta events of every later step. Scenarios are built from
-// modeltest objects applied to a fresh model, never from a cluster, so a rerun rewrites
-// the committed files byte for byte (TestFixturesAreCurrent fails when they drift).
+// atMs 0 followed by the delta and Kubernetes `event` records of every later step (the
+// snapshot carries no Events, so a scenario's Events belong in its later steps). Scenarios
+// are built from modeltest objects applied to a fresh model, never from a cluster, so a
+// rerun rewrites the committed files byte for byte (TestFixturesAreCurrent fails when they
+// drift).
 //
 //	go run ./test/fixturegen [-out test/fixtures/streams]
 package main
@@ -92,7 +94,7 @@ func record(w io.Writer, s scenario) error {
 			return fmt.Errorf("step at %d ms is not after %d ms", st.atMs, last)
 		}
 		last = st.atMs
-		for _, ev := range model.DeltaEvents(m.Apply(st.changes...)) {
+		for _, ev := range m.ApplyEvents(st.changes...) {
 			if err := enc.Encode(model.Record{AtMs: st.atMs, Event: ev.Type, Data: ev.Data}); err != nil {
 				return err
 			}
