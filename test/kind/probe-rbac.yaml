@@ -1,6 +1,7 @@
 # The planned read-only ClusterRole (plan Interfaces § RBAC, PRD R1/R2) bound to a scratch
 # ServiceAccount, for the Phase 0 in-cluster probe on kind. get/list/watch only; Secrets only
-# by the one resourceName; no nodes/proxy. Phase 7 moves this into deploy/install.yaml.
+# by the one resourceName; no nodes/proxy. TestProbeRBACMatchesInstall keeps the rules identical
+# to the ClusterRole in deploy/install.yaml.
 apiVersion: v1
 kind: Namespace
 metadata:

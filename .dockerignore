@@ -4,3 +4,5 @@ design
 test
 *.md
 cmd/visual-kubernetes/ui/dist
+web/node_modules
+web/dist

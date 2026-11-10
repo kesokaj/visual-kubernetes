@@ -2,16 +2,21 @@
 
 A read-only, real-time visualizer of Kubernetes internals on one white page, for live teaching demos.
 
-## Quick start
+## Install
 
-Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The planned install is one command:
+One command on any cluster that grants the read-only ClusterRole (the image is public and multi-arch, amd64 + arm64):
 
 ```bash
-kubectl apply -f install.yaml        # planned: one Deployment + read-only ClusterRole
-kubectl -n <namespace> port-forward deploy/visual-kubernetes 8080   # planned
+kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
+kubectl -n visual-kubernetes rollout status deploy/visual-kubernetes
+kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80   # then open http://localhost:8080
 ```
 
-The commands become the contract in `AGENTS.md` § Setup commands; the `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them.
+The release asset pins the image by digest; [`deploy/install.yaml`](deploy/install.yaml) in git names the same release by tag, so copying it works too. It creates the namespace `visual-kubernetes` (Pod Security `restricted`), a ServiceAccount, a get/list/watch-only ClusterRole and its binding, one Deployment and a ClusterIP Service. Remove it with `kubectl delete -f` on the same file; the app keeps no state.
+
+## Quick start (development)
+
+Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them.
 
 ## Architecture
 
@@ -38,7 +43,7 @@ design/                 # approved mockup
 
 The panel shows, per object:
 
-- **App and pod:** a summary, metrics sparklines for the last 90 s (network rx+tx, CPU, memory, whichever the cluster reports), Events (once the server streams them: the page reads the `event` stream contract, the server side is a backlog Task, D29), the pod's last 200 log lines from `/api/logs` (Refresh re-reads them), and the YAML from `/api/objects`. An app's config is its top workload (for example `apps/Deployment/shop/web`); replay mode serves only the recorded entities, so that YAML is a 404 there.
+- **App and pod:** a summary, metrics sparklines for the last 90 s (network rx+tx, CPU, memory, whichever the cluster reports), Events (from events.k8s.io, about the app's workloads and pods; Events about Secrets are never streamed), the pod's last 200 log lines from `/api/logs` (Refresh re-reads them), and the YAML from `/api/objects`. An app's config is its top workload (for example `apps/Deployment/shop/web`); replay mode serves only the recorded entities, so that YAML is a 404 there.
 - **Node:** its conditions read from the Node YAML (falling back to its status when there are none), Events and YAML.
 - **API server:** every data source and its probe state (`ok`, `missing`, `denied`, `unreachable`, `error`), the same list `visual-kubernetes probe` prints.
 - **Inferred control-plane part (`cp/*`):** the evidence it was inferred from and the static pods folded behind it.
@@ -59,7 +64,7 @@ No config file or environment settings. The binary takes flags: `--kubeconfig PA
 
 ## Deploy
 
-How it runs locally and on GCP is in the `DEPLOY-local` and `DEPLOY-gcp` records; a release goes through `/fyr-preflight`. The UI has no auth: reach it only through `kubectl port-forward`. An opt-in LoadBalancer variant limited by source ranges, with pod logs off, is planned (PRD R7, ADR-008); until it ships, never expose the Service.
+How it runs locally and on GCP is in the `DEPLOY-local` and `DEPLOY-gcp` records; a release (image push to Artifact Registry, `gh release` with the digest-pinned `install.yaml`) goes through `/fyr-preflight`. The UI has no auth: reach it only through `kubectl port-forward`. An opt-in LoadBalancer variant limited by source ranges, with pod logs off, is planned (PRD R7, ADR-008); until it ships, never expose the Service.
 
 ## Where things are
 

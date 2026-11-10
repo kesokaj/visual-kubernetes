@@ -1,0 +1,180 @@
+# visual-kubernetes: read-only, real-time view of a cluster's internals (PRD R1–R3, R7, S1).
+#
+#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
+#   kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80
+#   open http://localhost:8080
+#
+# The page has no authentication, so the Service is ClusterIP and is reached only through
+# port-forward (R7). The ClusterRole is get/list/watch only, and Secrets are readable only by
+# the one named resourceName (R1, R2); TestInstallManifestReadOnly pins both. The release
+# asset pins the image by digest; this file in git names the same release by tag.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: visual-kubernetes
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - endpoints
+      - events
+      - limitranges
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+      - persistentvolumes
+      - pods
+      - podtemplates
+      - replicationcontrollers
+      - resourcequotas
+      - serviceaccounts
+      - services
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [nodes/stats, pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [hubble-relay-client-certs]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [controllerrevisions, daemonsets, deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [cronjobs, jobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling.k8s.io]
+    resources: [verticalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingressclasses, ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gatewayclasses, gateways, grpcroutes, httproutes]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [csidrivers, csinodes, storageclasses, volumeattachments]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [nodes, pods]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics, /readyz]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: visual-kubernetes
+subjects:
+  - kind: ServiceAccount
+    name: visual-kubernetes
+    namespace: visual-kubernetes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visual-kubernetes
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: visual-kubernetes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: visual-kubernetes
+    spec:
+      serviceAccountName: visual-kubernetes
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: visual-kubernetes
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: visual-kubernetes
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: visual-kubernetes
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

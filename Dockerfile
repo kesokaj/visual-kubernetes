@@ -1,16 +1,31 @@
 # syntax=docker/dockerfile:1
-# Static Go binary on distroless, non-root. Phase 0 ships the probe only; Phase 7 adds the
-# embedded UI build stage. Multi-arch through buildx: the builder runs natively and cross-compiles.
+# Static Go binary with the page embedded, on distroless, non-root. Multi-arch through buildx:
+# both build stages run on the builder's own platform and the Go stage cross-compiles, so
+# `docker buildx build --platform linux/amd64,linux/arm64` needs no emulation.
+FROM --platform=$BUILDPLATFORM node:26-slim AS web
+WORKDIR /src/web
+RUN npm install -g corepack && corepack enable pnpm
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY web/ ./
+# vite writes the client build to ../cmd/visual-kubernetes/ui/dist (web/vite.config.ts); the
+# typecheck (`tsc -b`) runs in the dev loop, not here, because it also reads test/e2e. The SPA
+# prerender fetches its own preview server on 127.0.0.1; ipv4first makes `localhost` (where
+# that server listens) resolve there too, as it does on macOS.
+RUN NODE_OPTIONS=--dns-result-order=ipv4first pnpm exec vite build
+
 FROM --platform=$BUILDPLATFORM golang:1.27 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
+COPY --from=web /src/cmd/visual-kubernetes/ui/dist cmd/visual-kubernetes/ui/dist
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/visual-kubernetes ./cmd/visual-kubernetes
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/visual-kubernetes /visual-kubernetes
 USER 65532:65532
+EXPOSE 8080
 ENTRYPOINT ["/visual-kubernetes"]
