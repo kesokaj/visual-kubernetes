@@ -1,18 +1,20 @@
 import { Chains } from './chains'
+import { Flows } from './flows'
 import { Motion } from './motion'
 import { EventLog, Metrics } from './telemetry'
 import type { Capabilities, Edge, Entity, StreamEvent } from './wire'
 
 // Graph is the page's copy of the live view: the snapshot plus every delta since, the latest
 // capabilities, metrics with a short history, recent Kubernetes Events, the causal chains the
-// presenter can replay and the motion those deltas start. It is a plain external store
-// (subscribe + version) so React reads it with useSyncExternalStore.
+// presenter can replay, traffic flows and the motion those deltas start. It is a plain external
+// store (subscribe + version) so React reads it with useSyncExternalStore.
 export class Graph {
   readonly entities = new Map<string, Entity>()
   readonly edges = new Map<string, Edge>()
   readonly metrics = new Metrics()
   readonly events = new EventLog()
   readonly chains = new Chains()
+  readonly flows = new Flows()
   readonly motion = new Motion()
   caps: Capabilities = {}
   version = 0
@@ -28,6 +30,7 @@ export class Graph {
       case 'snapshot':
         this.entities.clear()
         this.edges.clear()
+        this.flows.clear()
         for (const e of ev.entities) this.entities.set(e.id, e)
         for (const e of ev.edges) this.edges.set(e.id, e)
         this.caps = ev.capabilities
@@ -51,7 +54,7 @@ export class Graph {
         this.metrics.apply(ev.sizeBy, ev.samples)
         break
       case 'capabilities':
-        this.caps = ev.capabilities
+        this.caps = { ...this.caps, ...ev.capabilities }
         break
       case 'event':
         this.events.add(ev.event)
@@ -59,6 +62,9 @@ export class Graph {
       case 'chain':
         this.chains.add(ev.chain)
         break
+      case 'flow':
+        this.flows.add(ev.flow, this.now())
+        return
     }
     this.version += 1
     for (const l of this.listeners) l()
@@ -82,6 +88,7 @@ export const STREAM_TYPES = [
   'capabilities',
   'event',
   'chain',
+  'flow',
 ] as const
 
 // connect opens the same-origin stream and feeds the graph. EventSource reconnects by itself

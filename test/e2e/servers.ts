@@ -4,7 +4,7 @@
 // node-join and missing-sources are only opened by encodings.spec.ts, deployScaleEvents
 // (deploy-scale again, for its Kubernetes Events) only by panel.spec.ts, deployScaleReplay
 // (deploy-scale again, for its causal chain) only by replay.spec.ts, and g3Scale (one G3-sized
-// snapshot) by perf.spec.ts. telemetry repeats its metrics and Events for the whole run.
+// snapshot) by perf.spec.ts. telemetry and traffic repeat their events for the whole run.
 export const SERVERS = {
   deployScale: { port: 18080, fixture: 'test/fixtures/streams/deploy-scale.ndjson' },
   nodeJoin: { port: 18081, fixture: 'test/fixtures/streams/node-join.ndjson' },
@@ -14,6 +14,7 @@ export const SERVERS = {
   deployScaleEvents: { port: 18085, fixture: 'test/fixtures/streams/deploy-scale.ndjson' },
   deployScaleReplay: { port: 18086, fixture: 'test/fixtures/streams/deploy-scale.ndjson' },
   g3Scale: { port: 18087, fixture: 'test/fixtures/streams/g3-scale.ndjson' },
+  traffic: { port: 18088, fixture: '.agents/scratch/e2e/traffic.ndjson' },
 } as const
 
 export type ServerName = keyof typeof SERVERS

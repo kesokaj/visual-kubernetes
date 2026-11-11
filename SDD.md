@@ -22,24 +22,29 @@ flowchart LR
 
 ## Components
 
-Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0), `internal/watch`, `internal/model` (Phase 1), the serve command, `internal/sources`, `internal/stream` (Phase 2), the page shell in `web/` embedded by `cmd/visual-kubernetes/embed.go` (Phase 3), the click panel, encodings, folding and perf probe (Phase 4), teaching replay in `internal/replay` and `web/src/replay/`, the G3-scale perf probe and `examples/` (Phase 5), and `deploy/install.yaml` with the multi-arch `Dockerfile` (Phase 7, release v0.1.0). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
+Built so far: `cmd/visual-kubernetes probe`, `internal/kubelet`, `internal/probe` (Phase 0), `internal/watch`, `internal/model` (Phase 1), the serve command, `internal/sources`, `internal/stream` (Phase 2), the page shell in `web/` embedded by `cmd/visual-kubernetes/embed.go` (Phase 3), the click panel, encodings, folding and perf probe (Phase 4), teaching replay in `internal/replay` and `web/src/replay/`, the G3-scale perf probe and `examples/` (Phase 5), Hubble Relay + Prometheus pull traffic flows in `internal/hubble` and the Canvas 2D particle overlay in `web/src/web/TrafficCanvas.tsx` (Phase 6), and `deploy/install.yaml` with the multi-arch `Dockerfile` (Phase 7, release v0.1.0). The rest is planned in PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual.
 
 | ID | Component | Responsibility | Satisfies |
 |---|---|---|---|
 | M1 | `cmd/visual-kubernetes` + `internal/watch`, `internal/model`, `internal/sources` | Watch the cluster read-only, read metrics sources, keep the live model | R1, R2, R4, R8, S2, S4 |
 | M2 | `internal/stream`, `internal/replay` | Serve SSE deltas with resume, decode recordings, the object/log endpoints and causal chains (builder runs in fixturegen; live wiring deferred D48) | R5 |
-| M3 | `web/` (spider web, filter pill, click panel, encodings, folding, teaching replay player and caption built) | The embedded spider-web page, filter pill, click panel, teaching replay player and caption | R5, R6, R9, R10, S5 |
-| M4 | Hubble client, a new internal package planned in Phase 6 | Optional Hubble Relay flows | S3 |
+| M3 | `web/` (spider web, filter pill, click panel, encodings, folding, teaching replay and Canvas 2D traffic overlay built) | The embedded spider-web page, filter pill, click panel, teaching replay and traffic particles | R5, R6, R9, R10, S3, S5 |
+| M4 | `internal/hubble` | Auto-detected Hubble Relay gRPC stream (Cilium plaintext, GKE DPv2 mTLS) + Prometheus pull fallback → per-edge `flow` SSE events | R1, R2, R4, S3 |
 | M5 | `deploy/`, `Dockerfile`, `examples/` (`install.yaml`, `Dockerfile` and `examples/` built; the kube-system and LoadBalancer variants planned in Phase 7) | One-command install, ClusterIP access by default and an opt-in LoadBalancer variant (ADR-008), demo scenarios, local binary run | R3, R7, S1, S6, S7 |
 
 ## Flows
 
-Built: cluster watch → model → hub → SSE. Informers (`internal/watch`) hand batched object changes to `model.ApplyEvents`, whose deltas and Kubernetes `event`s (Events from one API, never stored) become SSE events in the `internal/stream` hub (15 min ring, `Last-Event-ID` resume, else a fresh snapshot). Every 5 s, once the informers have synced, the `internal/sources` collector reads metrics.k8s.io, kubelet Summary (in-cluster only), `/readyz`, `/metrics` and Leases, and publishes `metrics`, `capabilities` and inferred `cp/*` upserts into the same hub. `--replay FILE` feeds the hub from a recorded stream instead. Built in Phase 3: hub → page. The binary serves the embedded build at `/` (hash-pinned CSP, same origin only); the page opens `/api/stream`, keeps a `Graph` store, filters it into a scene, lays it out with d3-force around the pinned API hub and auto-fits it at 16:9. Built in Phase 4: a click opens the panel, which reads `/api/objects` and `/api/logs` and shows the metrics and Events the stream carries; apps size by `sizeBy`, pulse on change, and past 150 bubbles the rest become corner counters. Built in Phase 5: teaching replay and scenarios. `internal/replay` builds causal chains from object changes (`chain` SSE events: 4 derived steps at the API hub, then observed steps on children, pods, EndpointSlices; runs in `test/fixturegen`, live wiring deferred D48); recordings stream them to the page (`web/src/lib/chains.ts`, `web/src/replay/`), where R replays at 1 step/s, Space pauses/resumes, → steps, and Esc hides the caption pointing at the hub or app. Teaching scenarios live in `examples/` (01-deployment, 02-nodes, 03-hpa, 03b-vpa).
+Informers (`internal/watch`) hand batched object changes to `model.ApplyEvents`, whose deltas and Kubernetes `event`s (never stored) become SSE events in the `internal/stream` hub (15 min ring, `Last-Event-ID` resume, else a fresh snapshot). Every 5 s after sync, `internal/sources` reads `metrics.k8s.io`, kubelet Summary (in-cluster only), `/readyz`, `/metrics` and Leases, publishing `metrics`, `capabilities` and inferred `cp/*` upserts. `--replay FILE` feeds the same hub from a recorded stream instead.
+
+The binary serves the embedded build at `/` (hash-pinned CSP, same origin only), where the browser keeps a `Graph` store, filters it into a scene, and lays it out with d3-force around the pinned API hub (auto-fit at 16:9). Clicking opens the panel (`/api/objects`, `/api/logs`, metrics sparklines and Events); apps size by `sizeBy`, pulse on change, and past 150 bubbles fold into corner counters.
+
+`internal/replay` builds causal chains (`chain` SSE events: 4 derived steps at the API hub, then observed steps; runs in `test/fixturegen`, live wiring deferred D48) that the page replays at 1 step/s (`R`, `Space`, `→`, `Esc`). In-cluster `internal/hubble` auto-detects Cilium or GKE DPv2 Hubble Relay (or queries Prometheus when Relay is absent), aggregates forward-direction `FORWARDED` and `DROPPED` flows per edge every 1 s into `flow` SSE events, and `TrafficCanvas.tsx` draws blue particles and red policy-drop marks over the web. Teaching scenarios live in `examples/` (`01-deployment`, `02-nodes`, `03-hpa`, `03b-vpa`, `04-traffic`).
 
 ```mermaid
 flowchart LR
   watch["internal/watch"] --> model["internal/model"] --> hub["internal/stream hub"]
   sources["internal/sources"] --> hub
+  hubble["internal/hubble"] -.-> hub
   replay["--replay FILE"] -.-> hub
   hub -->|"GET /api/stream"| page["Browser"]
 ```

@@ -1,0 +1,16 @@
+# kind fixture for Cilium + Hubble Relay integration tests (plan Phase 6, GUIDE-testing § 3).
+# disableDefaultCNI omits kindnet so Cilium installs as the CNI; serverTLSBootstrap issues
+# cluster-CA kubelet serving certs so kubelet TLS verification (PRD R8) still holds.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: visual-kubernetes
+networking:
+  disableDefaultCNI: true
+kubeadmConfigPatches:
+  - |
+    kind: KubeletConfiguration
+    serverTLSBootstrap: true
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

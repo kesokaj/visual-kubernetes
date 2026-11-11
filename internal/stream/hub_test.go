@@ -104,6 +104,7 @@ func TestSnapshotFollowsDeltas(t *testing.T) {
 	publish(t, h, upsert("core/Pod/ns/b", "Running"),
 		model.Event{Type: string(model.OpDelete), Data: model.IDData{ID: "core/Pod/ns/a"}},
 		model.Event{Type: EventCapabilities, Data: CapabilitiesData{Capabilities: map[string]model.Capability{"kubelet": {State: "ok"}}}},
+		model.Event{Type: EventCapabilities, Data: CapabilitiesData{Capabilities: map[string]model.Capability{"hubble-relay": {State: "ok"}}}},
 		model.Event{Type: EventMetrics, Data: MetricsData{SizeBy: SizeByPods, Samples: []Sample{}}})
 	sub, err := h.Subscribe("")
 	if err != nil {
@@ -117,8 +118,8 @@ func TestSnapshotFollowsDeltas(t *testing.T) {
 	if len(snap.Entities) != 1 || snap.Entities[0].ID != "core/Pod/ns/b" {
 		t.Errorf("snapshot entities = %+v, want only core/Pod/ns/b", snap.Entities)
 	}
-	if snap.Capabilities["kubelet"].State != "ok" {
-		t.Errorf("snapshot capabilities = %+v, want kubelet ok", snap.Capabilities)
+	if snap.Capabilities["kubelet"].State != "ok" || snap.Capabilities["hubble-relay"].State != "ok" {
+		t.Errorf("snapshot capabilities = %+v, want both kubelet and hubble-relay ok", snap.Capabilities)
 	}
 }
 

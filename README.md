@@ -18,11 +18,11 @@ The release asset pins the image by digest; [`deploy/install.yaml`](deploy/insta
 
 ## Quick start (development)
 
-Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them. Ready-to-run teaching scenarios and driver scripts are in [`examples/`](examples/README.md) (01-deployment, 02-nodes, 03-hpa, 03b-vpa).
+Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them. Ready-to-run teaching scenarios and driver scripts are in [`examples/`](examples/README.md) (01-deployment, 02-nodes, 03-hpa, 03b-vpa, 04-traffic).
 
 ## Architecture
 
-One Go binary watches the cluster with client-go informers (read-only) and keeps the live model in memory. It streams changes over SSE to an embedded TanStack Start page that draws a force-directed web (SVG + d3-force; Canvas for traffic is planned). The visual reference is `design/mockup-v3.html`.
+One Go binary watches the cluster with client-go informers (read-only) and keeps the live model in memory. It streams changes over SSE to an embedded TanStack Start page that draws a force-directed web (SVG + d3-force, with a Canvas 2D particle overlay for traffic flows). The visual reference is `design/mockup-v3.html`.
 
 ```
 cmd/visual-kubernetes/  # the binary: serve (live or --replay), probe, the embedded page
@@ -62,6 +62,7 @@ What the web encodes:
 - **Halo:** the three busiest apps by that measure.
 - **Pulse:** a ring when an app is created or changes status (a scale), or one of its pods is added, removed or changes status (for example on a restart).
 - **Travel:** a pod newly placed on a node moves along that node's thread to its app before taking its place on the ring.
+- **Traffic:** when Hubble Relay (Cilium or GKE Dataplane V2) or an in-cluster Prometheus flow series is available, curved edges carry blue particles for forwarded flows and red particles plus `×` marks for `NetworkPolicy` drops.
 - **Corner counters:** what is not drawn one by one: apps and pods folded on large clusters, unreferenced ConfigMaps, and anything over the 150-bubble budget. Static control-plane pods (`kube-apiserver-*`, `etcd-*`, …) fold behind their `cp/*` part when the cluster exposes one.
 
 ## Configuration

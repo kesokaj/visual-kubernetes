@@ -45,10 +45,10 @@ func (v *view) apply(ev model.Event) {
 			delete(v.edges, d.ID)
 		}
 	case CapabilitiesData:
-		v.caps = maps.Clone(d.Capabilities)
 		if v.caps == nil {
 			v.caps = map[string]model.Capability{}
 		}
+		maps.Copy(v.caps, d.Capabilities)
 	}
 }
 

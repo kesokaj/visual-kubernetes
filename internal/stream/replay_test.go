@@ -11,6 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/kesokaj/visual-kubernetes/internal/hubble"
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/replay"
 )
@@ -28,7 +29,7 @@ func TestLoadRecordingRejects(t *testing.T) {
 		"event name injects":   snap + "\n" + `{"atMs":1,"event":"upsert\ndata: x","data":{}}`,
 		"long event name":      snap + "\n" + `{"atMs":1,"event":"` + strings.Repeat("a", 33) + `","data":{}}`,
 		"typed data is wrong":  snap + "\n" + `{"atMs":1,"event":"upsert","data":{"entity":"x"}}`,
-		"unknown data absent":  snap + "\n" + `{"atMs":1,"event":"flow"}`,
+		"unknown data absent":  snap + "\n" + `{"atMs":1,"event":"custom"}`,
 		"event data is wrong":  snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":"x"}}`,
 		"event without id":     snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":{"reason":"X"}}}`,
 		"chain data is wrong":  snap + "\n" + `{"atMs":1,"event":"chain","data":{"steps":"x"}}`,
@@ -36,6 +37,12 @@ func TestLoadRecordingRejects(t *testing.T) {
 		"chain without steps":  snap + "\n" + `{"atMs":1,"event":"chain","data":{"id":"c","steps":[]}}`,
 		"chain step no object": snap + "\n" + `{"atMs":1,"event":"chain","data":{"id":"c","steps":[{"verb":"created"}]}}`,
 		"chain too long":       snap + "\n" + `{"atMs":1,"event":"chain","data":{"id":"c","steps":[` + strings.TrimSuffix(strings.Repeat(`{"verb":"created","object":"core/Pod/a/b"},`, 65), ",") + `]}}`,
+		"flow data is wrong":   snap + "\n" + `{"atMs":1,"event":"flow","data":"x"}`,
+		"flow without src":     snap + "\n" + `{"atMs":1,"event":"flow","data":{"dst":"b","verdict":"FORWARDED","bytes":0}}`,
+		"flow self loop":       snap + "\n" + `{"atMs":1,"event":"flow","data":{"src":"a","dst":"a","verdict":"FORWARDED","bytes":0}}`,
+		"flow bad verdict":     snap + "\n" + `{"atMs":1,"event":"flow","data":{"src":"a","dst":"b","verdict":"AUDIT","bytes":0}}`,
+		"flow negative bytes":  snap + "\n" + `{"atMs":1,"event":"flow","data":{"src":"a","dst":"b","verdict":"FORWARDED","bytes":-1}}`,
+		"flow negative count":  snap + "\n" + `{"atMs":1,"event":"flow","data":{"src":"a","dst":"b","verdict":"FORWARDED","bytes":0,"count":-1}}`,
 	} {
 		if _, err := LoadRecording(strings.NewReader(body)); err == nil {
 			t.Errorf("%s: LoadRecording succeeded, want an error", name)
@@ -153,11 +160,11 @@ func TestReplaySources(t *testing.T) {
 	}
 }
 
-// TestUnknownEventPassesThrough: types the recording does not decode (metrics, flow) replay
+// TestUnknownEventPassesThrough: types the recording does not decode (metrics, custom) replay
 // as recorded.
 func TestUnknownEventPassesThrough(t *testing.T) {
 	body := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{}}}` + "\n" +
-		`{"atMs":0,"event":"flow","data":{"src":"a",  "dst":"b"}}`
+		`{"atMs":0,"event":"custom","data":{"src":"a",  "dst":"b"}}`
 	rec, err := LoadRecording(strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -166,8 +173,32 @@ func TestUnknownEventPassesThrough(t *testing.T) {
 	publish(t, h, rec.steps[0].events...)
 	last := h.ring[len(h.ring)-1]
 	var got map[string]string
-	if last.Type != "flow" || json.Unmarshal(last.Data, &got) != nil || got["dst"] != "b" || strings.Contains(string(last.Data), "  ") {
-		t.Errorf("flow entry = %s %s, want the compact recorded data", last.Type, last.Data)
+	if last.Type != "custom" || json.Unmarshal(last.Data, &got) != nil || got["dst"] != "b" || strings.Contains(string(last.Data), "  ") {
+		t.Errorf("custom entry = %s %s, want the compact recorded data", last.Type, last.Data)
+	}
+}
+
+// TestFlowReplaysTyped: a recorded flow is decoded as hubble.Flow and reaches the hub's ring
+// with its endpoints, verdict and count intact.
+func TestFlowReplaysTyped(t *testing.T) {
+	body := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{}}}` + "\n" +
+		`{"atMs":5,"event":"flow","data":{"src":"app/vk-demo/Deployment/web","dst":"app/vk-demo/Deployment/cache","verdict":"DROPPED","bytes":0,"count":3}}`
+	rec, err := LoadRecording(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := rec.steps[1].events[0]
+	fl, ok := ev.Data.(hubble.Flow)
+	if !ok || fl.Src != "app/vk-demo/Deployment/web" || fl.Verdict != hubble.VerdictDropped || fl.Count != 3 {
+		t.Fatalf("flow decoded as %T %+v", ev.Data, ev.Data)
+	}
+	h := NewHub(HubOptions{})
+	publish(t, h, rec.steps[0].events...)
+	publish(t, h, ev)
+	last := h.ring[len(h.ring)-1]
+	var got hubble.Flow
+	if last.Type != hubble.EventFlow || json.Unmarshal(last.Data, &got) != nil || got.Dst != "app/vk-demo/Deployment/cache" || got.Count != 3 {
+		t.Errorf("ring entry = %s %s", last.Type, last.Data)
 	}
 }
 

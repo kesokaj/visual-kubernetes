@@ -42,6 +42,13 @@ body {
 .vk svg.web.drag {
   cursor: grabbing;
 }
+.vk canvas.fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 
 /* labels keep a white halo so they stay readable over pods and lines; never under 12px (R10) */
 .vk .lbl {

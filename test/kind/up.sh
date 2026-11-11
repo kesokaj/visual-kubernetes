@@ -1,22 +1,74 @@
 #!/usr/bin/env bash
 # Creates the kind test cluster, approves the kubelet-serving CSRs that serverTLSBootstrap
-# leaves pending, and installs metrics-server. The kubeconfig is written under
-# .agents/scratch/kind/ so the operator's ~/.kube/config and current context are never touched.
+# leaves pending, and installs metrics-server. With --cilium, disables default kindnet and
+# installs Cilium + Hubble Relay via Helm so /api/stream integration tests exercise live flows.
+# The kubeconfig is written under .agents/scratch/kind/ so the operator's ~/.kube/config and
+# current context are never touched.
 set -euo pipefail
 
+cilium=0
+case "${1:-}" in
+  "") ;;
+  --cilium) cilium=1 ;;
+  *)
+    echo "usage: $0 [--cilium]" >&2
+    exit 2
+    ;;
+esac
+if [[ $# -gt 1 ]]; then
+  echo "usage: $0 [--cilium]" >&2
+  exit 2
+fi
+if [[ "$cilium" == 1 ]] && ! command -v helm >/dev/null 2>&1; then
+  echo "error: --cilium requires helm in PATH" >&2
+  exit 2
+fi
+
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cluster="visual-kubernetes"
+readonly repo
+readonly cluster="visual-kubernetes"
 export KUBECONFIG="${KIND_KUBECONFIG:-$repo/.agents/scratch/kind/kubeconfig}"
-metrics_server_version="${METRICS_SERVER_VERSION:-v0.8.0}"
-nodes=3
+readonly metrics_server_version="${METRICS_SERVER_VERSION:-v0.8.0}"
+readonly cilium_version="${CILIUM_VERSION:-1.17.2}"
+readonly nodes=3
 
 mkdir -p "$(dirname "$KUBECONFIG")"
 
 if kind get clusters 2>/dev/null | grep -qx "$cluster"; then
-  echo "cluster $cluster exists; refreshing kubeconfig"
   kind export kubeconfig --name "$cluster" --kubeconfig "$KUBECONFIG"
-else
-  kind create cluster --config "$repo/test/kind/config.yaml" --kubeconfig "$KUBECONFIG" --wait 120s
+  if [[ "$cilium" == 1 ]] && ! kubectl -n kube-system get daemonset cilium >/dev/null 2>&1; then
+    echo "cluster $cluster has no Cilium; recreating with config-cilium.yaml"
+    kind delete cluster --name "$cluster"
+  else
+    echo "cluster $cluster exists; refreshing kubeconfig"
+  fi
+fi
+
+if ! kind get clusters 2>/dev/null | grep -qx "$cluster"; then
+  if [[ "$cilium" == 1 ]]; then
+    # Nodes stay NotReady until Cilium initializes CNI, so omit --wait until Cilium is installed.
+    kind create cluster --config "$repo/test/kind/config-cilium.yaml" --kubeconfig "$KUBECONFIG"
+  else
+    kind create cluster --config "$repo/test/kind/config.yaml" --kubeconfig "$KUBECONFIG" --wait 120s
+  fi
+fi
+
+if [[ "$cilium" == 1 ]]; then
+  helm upgrade --install cilium cilium \
+    --repo https://helm.cilium.io/ \
+    --version "$cilium_version" \
+    --namespace kube-system \
+    --set image.pullPolicy=IfNotPresent \
+    --set ipam.mode=kubernetes \
+    --set kubeProxyReplacement=false \
+    --set operator.replicas=1 \
+    --set hubble.enabled=true \
+    --set hubble.relay.enabled=true
+  kubectl -n kube-system rollout status daemonset/cilium --timeout=240s
+  kubectl -n kube-system rollout status deployment/cilium-operator --timeout=180s
+  kubectl wait --for=condition=Ready nodes --all --timeout=180s
+  kubectl -n kube-system rollout status deployment/coredns --timeout=180s
+  kubectl -n kube-system rollout status deployment/hubble-relay --timeout=180s
 fi
 
 # Each kubelet files one kubernetes.io/kubelet-serving CSR; approve until every node has one issued.

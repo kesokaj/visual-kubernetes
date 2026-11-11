@@ -11,6 +11,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/kesokaj/visual-kubernetes/internal/hubble"
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/replay"
 )
@@ -93,6 +94,8 @@ func decodeRecord(raw rawRecord, n int) (model.Event, error) {
 		data = &model.K8sEventData{}
 	case replay.EventChain:
 		data = &replay.Chain{}
+	case hubble.EventFlow:
+		data = &hubble.Flow{}
 	default:
 		if !json.Valid(raw.Data) {
 			return model.Event{}, fmt.Errorf("record %d: %s data is not JSON", n, raw.Event)
@@ -108,6 +111,11 @@ func decodeRecord(raw rawRecord, n int) (model.Event, error) {
 	if c, ok := data.(*replay.Chain); ok {
 		if err := validChain(*c); err != nil {
 			return model.Event{}, fmt.Errorf("record %d: chain: %w", n, err)
+		}
+	}
+	if fl, ok := data.(*hubble.Flow); ok {
+		if err := validFlow(*fl); err != nil {
+			return model.Event{}, fmt.Errorf("record %d: flow: %w", n, err)
 		}
 	}
 	return model.Event{Type: raw.Event, Data: deref(data)}, nil
@@ -130,8 +138,25 @@ func deref(v any) any {
 		return *d
 	case *replay.Chain:
 		return *d
+	case *hubble.Flow:
+		return *d
 	}
 	return v
+}
+
+// validFlow rejects a flow the page could not draw: empty or self-loop endpoints, an unknown
+// verdict, or negative counters.
+func validFlow(f hubble.Flow) error {
+	if f.Src == "" || f.Dst == "" || f.Src == f.Dst {
+		return errors.New("src and dst must name two distinct entities")
+	}
+	if f.Verdict != hubble.VerdictForwarded && f.Verdict != hubble.VerdictDropped {
+		return fmt.Errorf("unknown verdict %q", f.Verdict)
+	}
+	if f.Bytes < 0 || f.Count < 0 {
+		return errors.New("negative bytes or count")
+	}
+	return nil
 }
 
 // validChain rejects a chain the page could not play: no id, no steps, or a step that names

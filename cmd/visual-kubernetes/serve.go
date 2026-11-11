@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 
+	"github.com/kesokaj/visual-kubernetes/internal/hubble"
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
 	"github.com/kesokaj/visual-kubernetes/internal/sources"
@@ -160,9 +162,15 @@ func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, e
 	if err := w.Start(ctx); err != nil {
 		return app{}, fmt.Errorf("starting watches: %w", err)
 	}
+	colCaps := caps
+	if inCluster {
+		colCaps = maps.Clone(caps)
+		delete(colCaps, hubble.SourceName)
+	}
 	col := sources.New(sources.Deps{Model: m, Raw: sources.RESTRaw{Client: cs.Discovery().RESTClient()},
-		Kubelet: kc, KubeletErr: kerr, Out: hub, Log: log, Initial: caps, Ready: w.Synced})
+		Kubelet: kc, KubeletErr: kerr, Out: hub, Log: log, Initial: colCaps, Ready: w.Synced})
 	go col.Run(ctx, sources.DefaultInterval)
+	startHubble(ctx, inCluster, cs, m, hub, w.Synced, log)
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(cs.Discovery()))
 	srv := &stream.Server{Hub: hub, Ready: w.Synced, Log: log,
@@ -170,6 +178,30 @@ func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, e
 		Logs:    stream.ClusterLogs{Model: m, Client: cs}}
 	log.Info("watching", "host", cfg.Host, "inCluster", inCluster)
 	return app{handler: srv.Handler(), inCluster: inCluster}, nil
+}
+
+// startHubble streams traffic flows only in-cluster: outside a cluster the binary holds the
+// operator's credentials and cannot reach cluster-internal Service DNS anyway (D12b).
+func startHubble(ctx context.Context, inCluster bool, cs kubernetes.Interface, m *model.Model, hub *stream.Hub, ready func() bool, log *slog.Logger) {
+	if !inCluster {
+		return
+	}
+	hr := hubble.New(hubble.Deps{
+		Client: cs,
+		Model:  m,
+		Out:    hub,
+		Log:    log,
+		Ready:  ready,
+		OnCapability: func(c model.Capability) {
+			if err := hub.Publish(model.Event{
+				Type: stream.EventCapabilities,
+				Data: stream.CapabilitiesData{Capabilities: map[string]model.Capability{hubble.SourceName: c}},
+			}); err != nil {
+				log.Error("publishing hubble capability failed", "error", err.Error())
+			}
+		},
+	})
+	go hr.Run(ctx)
 }
 
 // clients are the API clients of a live run.

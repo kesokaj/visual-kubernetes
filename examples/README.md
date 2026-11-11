@@ -19,6 +19,7 @@ them at a demo cluster, never a production one. Everything goes into the namespa
 | `02-nodes.yaml` | One-CPU pods scaled past what the nodes hold: Pending pods (FailedScheduling); with node autoscaling (GKE Autopilot, a cluster autoscaler) new worker nodes join and take them | `02-nodes.sh up`, `more 8`, `down` |
 | `03-hpa.yaml` | A HorizontalPodAutoscaler on CPU, with an idle load generator to switch on | `03-hpa.sh up`, `load`, `calm`, `down` |
 | `03b-vpa.yaml` | A VerticalPodAutoscaler raising requests that are too small | `03b-vpa.sh up`, `down` |
+| `04-traffic.yaml` | Three-tier service traffic (`web` → `api` → `cache`) plus a `NetworkPolicy` blocking direct `web` → `cache` calls (red drop particles) | `04-traffic.sh up`, `allow-direct`, `block-direct`, `down` |
 
 ## Requirements
 
@@ -33,6 +34,10 @@ them at a demo cluster, never a production one. Everything goes into the namespa
   install it: the app is read-only and never enables cluster features.
 - `02-nodes` on kind: the cluster has fixed nodes, so the extra pods stay Pending. That still
   shows the scheduler's FailedScheduling chain.
+- `04-traffic` needs Hubble Relay (Cilium, GKE Dataplane V2, or `test/kind/up.sh --cilium`
+  locally) for live flow and `DROPPED` policy particles, or an in-cluster Prometheus exposing
+  OpenTelemetry `servicegraph`, Istio or Hubble flow metrics. Without a traffic source, the
+  three Deployments, their Services and `cache-only-from-api` still appear in the web.
 
 ## Checking the manifests
 

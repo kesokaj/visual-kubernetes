@@ -6,6 +6,7 @@ import { Counters } from './Counters'
 import { Labels } from './labels'
 import { HaloDefs, Travels } from './marks'
 import { AnchorView, LinkView, posOf } from './parts'
+import { TrafficCanvas } from './TrafficCanvas'
 import { useWeb } from './useWeb'
 
 type Props = {
@@ -18,10 +19,11 @@ type Props = {
 }
 
 // Web is the spider web: links under bodies, bodies in the zoomed world, labels on top in
-// screen space, and the replay caption beside the body its step is about. data-* attributes
-// name what is drawn so tests assert presence and edges, never coordinates (ADR-004).
+// screen space, traffic particles on the 2D canvas, and the replay caption beside the body its
+// step is about. data-* attributes name what is drawn so tests assert presence and edges, never
+// coordinates (ADR-004).
 export function Web({ graph, on, fitNonce, selected, onSelect, play }: Props) {
-  const { scene, layout, cam, size, svgRef } = useWeb(graph, on, fitNonce, onSelect)
+  const { scene, layout, cam, camRef, size, svgRef } = useWeb(graph, on, fitNonce, onSelect)
   const bodies = layout.bodies
   const now = performance.now()
   const travels = on.has('pods') ? [...graph.motion.travels.values()] : []
@@ -59,6 +61,7 @@ export function Web({ graph, on, fitNonce, selected, onSelect, play }: Props) {
       </g>
       <Labels scene={scene} bodies={bodies} cam={cam} />
     </svg>
+    <TrafficCanvas graph={graph} scene={scene} bodies={bodies} camRef={camRef} size={size} visible={on.has('traffic')} />
     <Counters counters={scene.counters} />
     <Caption play={play} graph={graph} scene={scene} bodies={bodies} cam={cam} size={size} />
     </>

@@ -7,16 +7,18 @@
 
 ## Now
 
-Phase 6 — Hubble traffic · PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual · goal: flows from Hubble Relay drawn as particles along edges, red for policy drops. Phase 5 done 2026-11-11 (chains in recorded streams only until D48 is approved).
+Phase 7 — Packaging, install and live e2e · PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual · goal: finalize `DEPLOY-local`/`DEPLOY-gcp`, `deploy/install-kube-system.yaml`, `--logs` + `deploy/install-lb.yaml` (ADR-008), `test/e2e/live.sh` + `live.spec.ts` (G2 p95 ≤ 2 s), and `fyr check` exit 0. Phase 6 done 2026-11-11.
 
-- [ ] Hubble client: auto-detect Cilium and GKE DPv2 Hubble Relay
-- [ ] Canvas 2D particle overlay along edges, red for policy drops
-- [ ] `test/kind/up.sh --cilium` and `examples/04-traffic`
-- [ ] Checkpoint
+- [ ] Dockerfile finalized + `DEPLOY-local` check (multi-arch and `--replay` smoke already done in v0.1.0)
+- [ ] `deploy/install.yaml` (done in v0.1.0) and `deploy/install-kube-system.yaml`
+- [ ] `--logs` flag (D38, default true; `--logs=false` → 403 on `/api/logs` + panel note)
+- [ ] `deploy/install-lb.yaml` + `TestInstallLBRequiresSourceRanges` (ADR-008, D37, D47)
+- [ ] Live e2e on kind (`test/e2e/live.sh` + `test/e2e/live.spec.ts`, G2 p95 ≤ 2 s)
+- [ ] `DEPLOY-gcp` updated with `install-lb.yaml` release step
+- [ ] Checkpoint (`go test -race ./...`, Playwright, `test/e2e/live.sh`, and `fyr check` exit 0 after D43 PRD `enforced by:` approval)
 
 ## Next
 
-- Phase 7 — Packaging, install and live e2e, plus `deploy/install-lb.yaml`, the `--logs` flag and `TestInstallLBRequiresSourceRanges` (ADR-008).
 - `/fyr-preflight` for v1 and the LB deploy on the operator's go (plan D41).
 
 ## Backlog

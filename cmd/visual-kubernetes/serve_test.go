@@ -13,6 +13,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/kesokaj/visual-kubernetes/internal/hubble"
+	"github.com/kesokaj/visual-kubernetes/internal/model"
+	"github.com/kesokaj/visual-kubernetes/internal/stream"
 )
 
 func discard() *slog.Logger { return slog.New(slog.DiscardHandler) }
@@ -198,5 +204,38 @@ func TestRunServeRefusesForeignHost(t *testing.T) {
 		if resp.StatusCode != want {
 			t.Errorf("Host %q: status %d, want %d", host, resp.StatusCode, want)
 		}
+	}
+}
+
+func TestStartHubbleLocalVsInCluster(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	m := model.New()
+	hub := stream.NewHub(stream.HubOptions{})
+	if err := hub.Publish(m.SnapshotEvent(map[string]model.Capability{})); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := hub.Subscribe("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+
+	// Outside a cluster, startHubble must not touch the client or publish capabilities.
+	startHubble(t.Context(), false, cs, m, hub, func() bool { return true }, discard())
+	if acts := cs.Actions(); len(acts) != 0 {
+		t.Fatalf("local mode made %d API calls, want 0", len(acts))
+	}
+
+	// In-cluster, startHubble detects the absent relay and publishes the missing capability.
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	startHubble(ctx, true, cs, m, hub, func() bool { return true }, discard())
+	select {
+	case ev := <-sub.C:
+		if ev.Type != stream.EventCapabilities || !strings.Contains(string(ev.Data), hubble.SourceName) {
+			t.Errorf("in-cluster event = %s %s, want hubble-relay capability", ev.Type, ev.Data)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("in-cluster startHubble published no capability")
 	}
 }

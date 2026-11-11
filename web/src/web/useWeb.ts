@@ -11,6 +11,7 @@ export type WebState = {
   scene: Scene
   layout: Layout
   cam: Camera
+  camRef: RefObject<Camera>
   size: { w: number; h: number }
   svgRef: RefObject<SVGSVGElement | null>
 }
@@ -73,7 +74,7 @@ export function useWeb(
 
   usePanZoom(svgRef, cam, dirty, select)
 
-  return { scene, layout: layout.current, cam: cam.current, size, svgRef }
+  return { scene, layout: layout.current, cam: cam.current, camRef: cam, size, svgRef }
 }
 
 // follow eases the auto camera one frame toward the fit of every body.

@@ -14,8 +14,14 @@ const { defineConfig, devices } = playwright as unknown as typeof import('@playw
 function server(name: ServerName) {
   const { port, fixture } = SERVERS[name]
   const run = `go run ./cmd/visual-kubernetes --replay ${fixture} --addr 127.0.0.1:${port}`
+  const gen =
+    name === 'telemetry'
+      ? `node test/e2e/fixtures/telemetry.mjs ${fixture} && `
+      : name === 'traffic'
+        ? `node test/e2e/fixtures/traffic.mjs ${fixture} && `
+        : ''
   return {
-    command: name === 'telemetry' ? `node test/e2e/fixtures/telemetry.mjs ${fixture} && ${run}` : run,
+    command: `${gen}${run}`,
     cwd: '..',
     url: `${urlOf(name)}/healthz`,
     reuseExistingServer: false,

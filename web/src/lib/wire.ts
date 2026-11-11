@@ -57,6 +57,11 @@ export type K8sEvent = { id: string; type: string; reason: string; message: stri
 export type Step = { at: string; actor: string; verb: string; object: string; derived: boolean }
 export type Chain = { id: string; steps: Step[] }
 
+// Flow is one aggregated traffic sample on an edge (plan Interfaces § SSE events; internal/hubble).
+export const FLOW_VERDICTS = ['FORWARDED', 'DROPPED'] as const
+export type FlowVerdict = (typeof FLOW_VERDICTS)[number]
+export type Flow = { src: string; dst: string; verdict: FlowVerdict; bytes: number; count?: number }
+
 export type StreamEvent =
   | { type: 'snapshot'; entities: Entity[]; edges: Edge[]; capabilities: Capabilities }
   | { type: 'upsert'; entity: Entity }
@@ -67,6 +72,7 @@ export type StreamEvent =
   | { type: 'capabilities'; capabilities: Capabilities }
   | { type: 'event'; event: K8sEvent }
   | { type: 'chain'; chain: Chain }
+  | { type: 'flow'; flow: Flow }
 
 type Obj = Record<string, unknown>
 
@@ -169,8 +175,29 @@ function stepOf({ at, actor, verb, object, derived }: Step): Step {
   return { at, actor, verb, object, derived }
 }
 
+export function isFlow(v: unknown): v is Flow {
+  return (
+    isObj(v) &&
+    isStr(v.src) &&
+    v.src !== '' &&
+    isStr(v.dst) &&
+    v.dst !== '' &&
+    v.src !== v.dst &&
+    (FLOW_VERDICTS as readonly unknown[]).includes(v.verdict) &&
+    typeof v.bytes === 'number' &&
+    Number.isFinite(v.bytes) &&
+    v.bytes >= 0 &&
+    optNum(v.count) &&
+    (v.count === undefined || (v.count as number) >= 0)
+  )
+}
+
+function flowOf({ src, dst, verdict, bytes, count }: Flow): Flow {
+  return count === undefined ? { src, dst, verdict, bytes } : { src, dst, verdict, bytes, count }
+}
+
 // parseTelemetry covers the events that carry no entities: metrics, capabilities, Kubernetes
-// Events and causal chains.
+// Events, causal chains and Hubble/Prometheus traffic flows.
 function parseTelemetry(type: string, v: Obj): StreamEvent | null {
   switch (type) {
     case 'metrics': {
@@ -183,13 +210,15 @@ function parseTelemetry(type: string, v: Obj): StreamEvent | null {
       return isK8sEvent(v.k8sEvent) ? { type, event: v.k8sEvent } : null
     case 'chain':
       return isChain(v) ? { type, chain: { id: v.id, steps: v.steps.map(stepOf) } } : null
+    case 'flow':
+      return isFlow(v) ? { type, flow: flowOf(v) } : null
     default:
       return null
   }
 }
 
-// parseEvent turns one SSE message into a typed event, or null for types this page does not
-// draw yet (flow) and for payloads that fail their guard.
+// parseEvent turns one SSE message into a typed event, or null for unknown event names and
+// payloads that fail their guard.
 export function parseEvent(type: string, data: string): StreamEvent | null {
   let v: unknown
   try {
