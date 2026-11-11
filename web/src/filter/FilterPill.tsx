@@ -197,7 +197,7 @@ function FocusControls({
 
 // FilterPill is the only chrome on the page: a compact pill bottom-left that opens component
 // switches (all on by default), self-visibility (off by default), and workload/namespace focus,
-// with the zoom buttons beside it.
+// with the zoom buttons at the end of the same capsule (R6, plan D2).
 export function FilterPill({ graph, filter, onChange, zoom }: Props) {
   const [open, setOpen] = useState(false)
   const version = useSyncExternalStore(graph.subscribe, graph.getVersion, graph.getVersion)

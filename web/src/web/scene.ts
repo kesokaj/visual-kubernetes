@@ -133,7 +133,11 @@ function applyFocus(anchors: Map<string, Anchor>, edges: readonly Edge[], filter
   for (const [id, a] of anchors) {
     if (a.role === 'node' && !hostedNodes.has(id)) anchors.delete(id)
   }
-  // The globe stays only while it still routes to something shown.
+}
+
+// pruneGlobe drops ext/internet unless it still routes to something shown: under a focus
+// filter, a group switch or a hidden self app alike (review DoD finding 3).
+function pruneGlobe(anchors: Map<string, Anchor>, edges: readonly Edge[]): void {
   for (const [id, a] of anchors) {
     if (a.role === 'ext' && !edges.some((e) => e.from === id && e.kind === 'routes' && anchors.has(e.to))) anchors.delete(id)
   }
@@ -164,6 +168,7 @@ export function buildScene(g: Graph, filter: FilterState, palette: Map<string, s
   }
   const allEdges = [...g.edges.values()]
   if (focused) applyFocus(anchors, allEdges, filter)
+  pruneGlobe(anchors, allEdges)
   for (const e of riders) {
     const app = e.appId ? anchors.get(e.appId) : undefined
     if (!app) continue
@@ -173,6 +178,7 @@ export function buildScene(g: Graph, filter: FilterState, palette: Map<string, s
   const apps = [...anchors.values()].filter((a) => a.role === 'app')
   const sizeBy = sizeApps(apps, g.metrics, podCount)
   const over = keepBudget(anchors)
+  pruneGlobe(anchors, allEdges) // again: the budget may have dropped the globe's targets
   if (over > 0 && filter.groups.has('system')) counters.push(overBudgetCounter(over))
   shapeApps(anchors, filter.groups.has('pods'))
   const links: Link[] = []

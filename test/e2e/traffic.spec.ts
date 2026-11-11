@@ -158,6 +158,11 @@ test('draws the internet globe with world traffic into its entrypoint, hidden wi
 
   // Internet & ingress off hides the globe and drops its flow from the overlay.
   await page.locator('.f-pill').click()
+  // Review DoD finding 3: with its only entrypoint target hidden, the globe has nothing to point at.
+  await page.getByRole('switch', { name: 'Workloads' }).click()
+  await expect(globe).toHaveCount(0)
+  await page.getByRole('switch', { name: 'Workloads' }).click()
+  await expect(globe).toHaveCount(1)
   await page.getByRole('switch', { name: 'Internet & ingress' }).click()
   await expect(globe).toHaveCount(0)
   await expect(page.getByTestId('traffic-canvas')).toHaveAttribute('data-flows', '3', { timeout: 5_000 })
