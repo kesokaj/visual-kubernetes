@@ -13,7 +13,8 @@ import (
 	mt "github.com/kesokaj/visual-kubernetes/internal/model/modeltest"
 )
 
-// scenarios returns the four recorded streams, in file-name order.
+// scenarios returns the recorded streams written through the model, in file-name order
+// (g3-scale is written apart, g3.go).
 func scenarios() []scenario {
 	return []scenario{deployScale(), largeCluster(), missingSources(), nodeJoin()}
 }
@@ -80,7 +81,8 @@ func daemonPod(ds *appsv1.DaemonSet, node string) *corev1.Pod {
 }
 
 // deployScale: an HPA raises web from 2 to 4 replicas; the new pods go Pending, are
-// scheduled, then become ready. The controllers and the scheduler say so in Events.
+// scheduled, then become ready, and the Service's EndpointSlice lists them. The controllers
+// and the scheduler say so in Events; the replay builder tells it as one chain (Phase 5).
 func deployScale() scenario {
 	ns := nodeNames(3)
 	web := newDeployment("shop", "web", 2, ns, 0, "web-config")
@@ -88,12 +90,15 @@ func deployScale() scenario {
 	initial = append(initial, web.objects()...)
 	initial = append(initial,
 		mt.Service("shop", "web", mt.Labels("app", "web")),
+		endpointSlice("shop", "web", web.pods...),
 		mt.ConfigMap("shop", "web-config"),
 		mt.HPA("shop", "web", "Deployment", "web", 2, 6, 2),
 	)
-	scaled := mt.Scaled(web.d, 4)
+	// the HPA controller (in kube-controller-manager) writes the scale: the chain's actor
+	scaled := managedBy(mt.Scaled(web.d, 4), "kube-controller-manager", "scale")
 	rs := mt.ReplicaSet(scaled, "7d4b9c")
 	fresh := []*corev1.Pod{mt.PodOf(rs, podSuffix(2)), mt.PodOf(rs, podSuffix(3))}
+	ready := []*corev1.Pod{running(fresh[0], "node-2"), running(fresh[1], "node-3")}
 	return scenario{name: "deploy-scale", caps: capabilities(nil), steps: []step{
 		{0, upserts(initial...)},
 		{1000, upserts(mt.HPA("shop", "web", "Deployment", "web", 2, 6, 4), scaled, rs,
@@ -106,7 +111,7 @@ func deployScale() scenario {
 				"Created pod: "+fresh[1].Name))},
 		{2500, upserts(mt.Scheduled(fresh[0], "node-2"), mt.Scheduled(fresh[1], "node-3"),
 			scheduledEvent(fresh[0], "node-2", 2500), scheduledEvent(fresh[1], "node-3", 2500))},
-		{4000, upserts(running(fresh[0], "node-2"), running(fresh[1], "node-3"))},
+		{4000, upserts(ready[0], ready[1], endpointSlice("shop", "web", append(web.pods, ready...)...))},
 	}}
 }
 

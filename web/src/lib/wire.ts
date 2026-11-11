@@ -50,6 +50,13 @@ export type Sample = { id: string; rxBps?: number; txBps?: number; cpuMilli?: nu
 // Event is about (its regarding object, as a D13 id).
 export type K8sEvent = { id: string; type: string; reason: string; message: string; at: string }
 
+// Chain is one causal chain (plan D17, internal/replay): the steps a change took through the
+// cluster, oldest first. Derived steps (authentication, authorization, admission, persisted)
+// are inferred from the API server's request path, never observed. A chain is resent whole
+// each time it grows, so the newest copy of an id replaces the older one.
+export type Step = { at: string; actor: string; verb: string; object: string; derived: boolean }
+export type Chain = { id: string; steps: Step[] }
+
 export type StreamEvent =
   | { type: 'snapshot'; entities: Entity[]; edges: Edge[]; capabilities: Capabilities }
   | { type: 'upsert'; entity: Entity }
@@ -59,6 +66,7 @@ export type StreamEvent =
   | { type: 'metrics'; sizeBy: SizeBy; samples: Sample[] }
   | { type: 'capabilities'; capabilities: Capabilities }
   | { type: 'event'; event: K8sEvent }
+  | { type: 'chain'; chain: Chain }
 
 type Obj = Record<string, unknown>
 
@@ -146,8 +154,23 @@ export function isK8sEvent(v: unknown): v is K8sEvent {
   return isObj(v) && [v.id, v.type, v.reason, v.message, v.at].every(isStr)
 }
 
-// parseTelemetry covers the events that carry no entities: metrics, capabilities and
-// Kubernetes Events.
+export function isStep(v: unknown): v is Step {
+  return isObj(v) && [v.at, v.actor, v.verb, v.object].every(isStr) && typeof v.derived === 'boolean'
+}
+
+// isChain needs an id and at least one step, every step well formed: a chain with one bad step
+// is dropped whole, since replaying it with a gap would teach the wrong order.
+export function isChain(v: unknown): v is Chain {
+  return isObj(v) && isStr(v.id) && v.id !== '' && Array.isArray(v.steps) && v.steps.length > 0 && v.steps.every(isStep)
+}
+
+// stepOf keeps the known fields of a checked step and nothing else.
+function stepOf({ at, actor, verb, object, derived }: Step): Step {
+  return { at, actor, verb, object, derived }
+}
+
+// parseTelemetry covers the events that carry no entities: metrics, capabilities, Kubernetes
+// Events and causal chains.
 function parseTelemetry(type: string, v: Obj): StreamEvent | null {
   switch (type) {
     case 'metrics': {
@@ -158,13 +181,15 @@ function parseTelemetry(type: string, v: Obj): StreamEvent | null {
       return { type, capabilities: capabilitiesOf(v.capabilities) }
     case 'event':
       return isK8sEvent(v.k8sEvent) ? { type, event: v.k8sEvent } : null
+    case 'chain':
+      return isChain(v) ? { type, chain: { id: v.id, steps: v.steps.map(stepOf) } } : null
     default:
       return null
   }
 }
 
 // parseEvent turns one SSE message into a typed event, or null for types this page does not
-// draw yet (chain, flow) and for payloads that fail their guard.
+// draw yet (flow) and for payloads that fail their guard.
 export function parseEvent(type: string, data: string): StreamEvent | null {
   let v: unknown
   try {

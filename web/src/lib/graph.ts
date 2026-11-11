@@ -1,16 +1,18 @@
+import { Chains } from './chains'
 import { Motion } from './motion'
 import { EventLog, Metrics } from './telemetry'
 import type { Capabilities, Edge, Entity, StreamEvent } from './wire'
 
 // Graph is the page's copy of the live view: the snapshot plus every delta since, the latest
-// capabilities, metrics with a short history, recent Kubernetes Events and the motion those
-// deltas start. It is a plain external store (subscribe + version) so React reads it with
-// useSyncExternalStore.
+// capabilities, metrics with a short history, recent Kubernetes Events, the causal chains the
+// presenter can replay and the motion those deltas start. It is a plain external store
+// (subscribe + version) so React reads it with useSyncExternalStore.
 export class Graph {
   readonly entities = new Map<string, Entity>()
   readonly edges = new Map<string, Edge>()
   readonly metrics = new Metrics()
   readonly events = new EventLog()
+  readonly chains = new Chains()
   readonly motion = new Motion()
   caps: Capabilities = {}
   version = 0
@@ -54,6 +56,9 @@ export class Graph {
       case 'event':
         this.events.add(ev.event)
         break
+      case 'chain':
+        this.chains.add(ev.chain)
+        break
     }
     this.version += 1
     for (const l of this.listeners) l()
@@ -76,6 +81,7 @@ export const STREAM_TYPES = [
   'metrics',
   'capabilities',
   'event',
+  'chain',
 ] as const
 
 // connect opens the same-origin stream and feeds the graph. EventSource reconnects by itself

@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/kesokaj/visual-kubernetes/internal/model"
+	"github.com/kesokaj/visual-kubernetes/internal/replay"
 )
 
 // Recording is a loaded recorded stream file (plan D14): NDJSON records whose first is a
@@ -90,6 +91,8 @@ func decodeRecord(raw rawRecord, n int) (model.Event, error) {
 		data = &CapabilitiesData{}
 	case model.EventK8s:
 		data = &model.K8sEventData{}
+	case replay.EventChain:
+		data = &replay.Chain{}
 	default:
 		if !json.Valid(raw.Data) {
 			return model.Event{}, fmt.Errorf("record %d: %s data is not JSON", n, raw.Event)
@@ -101,6 +104,11 @@ func decodeRecord(raw rawRecord, n int) (model.Event, error) {
 	}
 	if e, ok := data.(*model.K8sEventData); ok && e.K8sEvent.ID == "" {
 		return model.Event{}, fmt.Errorf("record %d: event names no object id", n)
+	}
+	if c, ok := data.(*replay.Chain); ok {
+		if err := validChain(*c); err != nil {
+			return model.Event{}, fmt.Errorf("record %d: chain: %w", n, err)
+		}
 	}
 	return model.Event{Type: raw.Event, Data: deref(data)}, nil
 }
@@ -120,8 +128,27 @@ func deref(v any) any {
 		return *d
 	case *model.K8sEventData:
 		return *d
+	case *replay.Chain:
+		return *d
 	}
 	return v
+}
+
+// validChain rejects a chain the page could not play: no id, no steps, or a step that names
+// no object or verb.
+func validChain(c replay.Chain) error {
+	if c.ID == "" || len(c.Steps) == 0 {
+		return errors.New("no id or no steps")
+	}
+	if len(c.Steps) > replay.MaxSteps {
+		return fmt.Errorf("%d steps, more than the builder ever sends (%d)", len(c.Steps), replay.MaxSteps)
+	}
+	for i, s := range c.Steps {
+		if s.Object == "" || s.Verb == "" {
+			return fmt.Errorf("step %d names no object or verb", i)
+		}
+	}
+	return nil
 }
 
 // validEventName keeps SSE framing intact: an event name is written verbatim after `event:`.

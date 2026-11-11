@@ -1,5 +1,7 @@
 import type { Graph } from '../lib/graph'
 import type { FilterGroup } from '../lib/wire'
+import { Caption } from '../replay/Caption'
+import type { Play } from '../replay/player'
 import { Counters } from './Counters'
 import { Labels } from './labels'
 import { HaloDefs, Travels } from './marks'
@@ -12,13 +14,14 @@ type Props = {
   fitNonce: number
   selected: string | null
   onSelect: (id: string | null) => void
+  play: Play
 }
 
 // Web is the spider web: links under bodies, bodies in the zoomed world, labels on top in
-// screen space. data-* attributes name what is drawn so tests assert presence and edges,
-// never coordinates (ADR-004).
-export function Web({ graph, on, fitNonce, selected, onSelect }: Props) {
-  const { scene, layout, cam, svgRef } = useWeb(graph, on, fitNonce, onSelect)
+// screen space, and the replay caption beside the body its step is about. data-* attributes
+// name what is drawn so tests assert presence and edges, never coordinates (ADR-004).
+export function Web({ graph, on, fitNonce, selected, onSelect, play }: Props) {
+  const { scene, layout, cam, size, svgRef } = useWeb(graph, on, fitNonce, onSelect)
   const bodies = layout.bodies
   const now = performance.now()
   const travels = on.has('pods') ? [...graph.motion.travels.values()] : []
@@ -57,6 +60,7 @@ export function Web({ graph, on, fitNonce, selected, onSelect }: Props) {
       <Labels scene={scene} bodies={bodies} cam={cam} />
     </svg>
     <Counters counters={scene.counters} />
+    <Caption play={play} graph={graph} scene={scene} bodies={bodies} cam={cam} size={size} />
     </>
   )
 }

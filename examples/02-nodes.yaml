@@ -1,0 +1,29 @@
+# Example 02: a Deployment whose pods each request a whole CPU and 1 GiB. Scaled past what the
+# nodes hold, the extra pods stay Pending (FailedScheduling); on a cluster with node
+# autoscaling (GKE Autopilot, a cluster autoscaler) new worker nodes join and the pods land on
+# them. On kind they stay Pending, which is the lesson there. Starts at one replica.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: big
+  labels:
+    app.kubernetes.io/name: big
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: big
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: big
+    spec:
+      containers:
+        - name: hold
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              memory: 1Gi

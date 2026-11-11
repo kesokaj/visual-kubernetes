@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/kesokaj/visual-kubernetes/internal/model"
+	"github.com/kesokaj/visual-kubernetes/internal/replay"
 )
 
-var streamNames = []string{"deploy-scale", "large-cluster", "missing-sources", "node-join"}
+var streamNames = []string{"deploy-scale", "g3-scale", "large-cluster", "missing-sources", "node-join"}
 
 // TestFixturesAreCurrent fails when the committed streams differ from what the generator
 // writes now, or when two runs differ: rerun `go run ./test/fixturegen` after a model change.
@@ -70,12 +71,17 @@ func lines(t *testing.T, name string) []line {
 }
 
 // TestStreamShape checks every stream starts with a snapshot at 0 ms, never goes back in
-// time and carries only the event types the UI understands.
+// time and carries only the event types the UI understands. Every stream but g3-scale (a
+// still frame for the perf probe) goes on past its snapshot.
 func TestStreamShape(t *testing.T) {
-	known := map[string]bool{"upsert": true, "delete": true, "edgeUpsert": true, "edgeDelete": true, model.EventK8s: true}
+	known := map[string]bool{"upsert": true, "delete": true, "edgeUpsert": true, "edgeDelete": true, model.EventK8s: true, replay.EventChain: true}
 	for _, name := range streamNames {
 		ls := lines(t, name)
-		if len(ls) < 2 || ls[0].Event != "snapshot" || ls[0].AtMs != 0 {
+		least := 2
+		if name == g3Name {
+			least = 1
+		}
+		if len(ls) < least || ls[0].Event != "snapshot" || ls[0].AtMs != 0 {
 			t.Fatalf("%s: want a snapshot at 0 ms followed by deltas, got %d lines", name, len(ls))
 		}
 		for i, l := range ls[1:] {

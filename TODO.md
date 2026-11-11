@@ -7,18 +7,17 @@
 
 ## Now
 
-Phase 5 — Teaching replay and scenarios · PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual · goal: causal chains, replay keys, example scenarios, G3-scale perf probe. Phase 4 done 2026-11-10 (box 4.5 reworded and ticked by D40). The Events Task (plan D29 + D32) is done (Session 2, 2026-11-10).
+Phase 6 — Hubble traffic · PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider-web-visual · goal: flows from Hubble Relay drawn as particles along edges, red for policy drops. Phase 5 done 2026-11-11 (chains in recorded streams only until D48 is approved).
 
-- [ ] Causal chain builder (D17) emitting `chain` events
-- [ ] Replay keys: Space pause, → step, R replay the last chain
-- [ ] `examples/01-deployment`, `02-nodes`, `03-hpa`, `03b-vpa`, each with a short script
-- [ ] Perf probe at G3 scale: a 150-bubble / 1,000-pod fixture (D42)
+- [ ] Hubble client: auto-detect Cilium and GKE DPv2 Hubble Relay
+- [ ] Canvas 2D particle overlay along edges, red for policy drops
+- [ ] `test/kind/up.sh --cilium` and `examples/04-traffic`
 - [ ] Checkpoint
 
 ## Next
 
-- Phase 6 — Hubble traffic.
 - Phase 7 — Packaging, install and live e2e, plus `deploy/install-lb.yaml`, the `--logs` flag and `TestInstallLBRequiresSourceRanges` (ADR-008).
+- `/fyr-preflight` for v1 and the LB deploy on the operator's go (plan D41).
 
 ## Backlog
 
@@ -31,3 +30,5 @@ Phase 5 — Teaching replay and scenarios · PLAN-2026-11-09-1906-plan-visual-ku
 - `--allowed-host` flag so a DNS name in front of the LoadBalancer passes the Host guard; not in v1 (added 2026-11-10, ADR-008 decision F, plan D39).
 - IAP or an authenticated Ingress in front of the UI, for v2 (added 2026-11-10, ADR-008 rejected options).
 - Optional egress NetworkPolicy examples per CNI in the README (API server, kubelets, Hubble Relay); not in the default install, which must stay portable (added 2026-11-10, REVIEW-2026-11-10-1559-security-round-2 finding 1).
+- Live causal-chain wiring: `replay.Builder` on the serve.go watch pump, plus keeping the newest managedFields manager in `internal/watch` trimForCache (added 2026-11-11, plan D48, REVIEW phase 5 r1 finding 1; needs the operator to approve `cmd/` + `internal/watch/` files).
+- `examples/*.sh` context guard (refuse unless the context is named or confirmed); today they print the context and the README warns (added 2026-11-11, security phase 5 finding 1).

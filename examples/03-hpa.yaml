@@ -1,0 +1,87 @@
+# Example 03: the HorizontalPodAutoscaler walkthrough. php-apache burns CPU per request; the
+# HPA keeps average CPU near 50% of the request between 1 and 10 replicas. load-generator
+# starts at 0 replicas: 03-hpa.sh load scales it to 1 and the HPA scales php-apache up; calm
+# scales it back to 0. Needs metrics.k8s.io (metrics-server; test/kind/up.sh installs it).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-apache
+  labels:
+    app.kubernetes.io/name: php-apache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: php-apache
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: php-apache
+    spec:
+      containers:
+        - name: php-apache
+          image: registry.k8s.io/hpa-example
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 200m
+            limits:
+              cpu: 500m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-apache
+spec:
+  selector:
+    app.kubernetes.io/name: php-apache
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  labels:
+    app.kubernetes.io/name: load-generator
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: load-generator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: load-generator
+    spec:
+      containers:
+        - name: wget
+          image: busybox:1.37
+          command: ["/bin/sh", "-c", "while sleep 0.01; do wget -q -O- http://php-apache >/dev/null; done"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

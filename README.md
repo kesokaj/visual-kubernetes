@@ -18,7 +18,7 @@ The release asset pins the image by digest; [`deploy/install.yaml`](deploy/insta
 
 ## Quick start (development)
 
-Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them.
+Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them. Ready-to-run teaching scenarios and driver scripts are in [`examples/`](examples/README.md) (01-deployment, 02-nodes, 03-hpa, 03b-vpa).
 
 ## Architecture
 
@@ -28,6 +28,7 @@ One Go binary watches the cluster with client-go informers (read-only) and keeps
 cmd/visual-kubernetes/  # the binary: serve (live or --replay), probe, the embedded page
 internal/               # the packages, one responsibility each
 web/                    # the TanStack Start frontend, built into the binary
+examples/               # demo scenarios and driver scripts for teaching
 test/                   # fixtures, Playwright e2e, kind integration
 design/                 # approved mockup
 .agents/                # project customizations and scratch/ (trail records live in fyr's brain store, read with fyr record)
@@ -38,10 +39,13 @@ design/                 # approved mockup
 | Action | Effect |
 |--------|--------|
 | Click a bubble | Opens the panel for it (click a pod chip in an app's panel to open that pod) |
-| Esc, ×, or a click on empty space | Closes the panel |
+| Esc, ×, or a click on empty space | Closes the panel; Esc also hides the replay caption |
 | Wheel / drag | Zoom and pan; the camera stops auto-fitting |
 | F | Fit the whole web again and resume auto-fit |
 | V | Hide or show the filter pill |
+| R | Replay the newest causal chain received since the page opened (1 step/s); recorded streams (`--replay`) only until live chains land (plan D48) |
+| Space | Pause or resume replay |
+| → | Show next step of replay (keeps pause state; opens the last chain paused if idle) |
 
 The panel shows, per object:
 

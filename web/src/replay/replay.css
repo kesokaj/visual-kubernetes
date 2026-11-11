@@ -1,0 +1,51 @@
+/* The causal-chain caption (replay/Caption.tsx): a white card pointing down at the body the
+   step is about. HTML in screen space, so 12px is the floor at any zoom (PRD R10). */
+.vk .chain-caption {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  max-width: 340px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.16);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+.vk .chain-caption::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  background: #fff;
+  transform: rotate(45deg);
+  box-shadow: 3px 3px 6px rgba(15, 23, 42, 0.08);
+}
+.vk .cc-meta,
+.vk .cc-actor {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.vk .cc-verb {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--k8s);
+}
+.vk .cc-obj {
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vk .cc-tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+}

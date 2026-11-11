@@ -12,24 +12,30 @@ import (
 	"time"
 
 	"github.com/kesokaj/visual-kubernetes/internal/model"
+	"github.com/kesokaj/visual-kubernetes/internal/replay"
 )
 
 func TestLoadRecordingRejects(t *testing.T) {
 	snap := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{}}}`
 	for name, body := range map[string]string{
-		"empty":               "",
-		"not JSON":            "nope",
-		"first not snapshot":  `{"atMs":0,"event":"upsert","data":{"entity":{"id":"x"}}}`,
-		"snapshot not at 0":   `{"atMs":5,"event":"snapshot","data":{}}`,
-		"missing atMs":        snap + "\n" + `{"event":"upsert","data":{"entity":{}}}`,
-		"negative atMs":       snap + "\n" + `{"atMs":-1,"event":"upsert","data":{"entity":{}}}`,
-		"atMs goes back":      snap + "\n" + `{"atMs":9,"event":"metrics","data":{}}` + "\n" + `{"atMs":8,"event":"metrics","data":{}}`,
-		"event name injects":  snap + "\n" + `{"atMs":1,"event":"upsert\ndata: x","data":{}}`,
-		"long event name":     snap + "\n" + `{"atMs":1,"event":"` + strings.Repeat("a", 33) + `","data":{}}`,
-		"typed data is wrong": snap + "\n" + `{"atMs":1,"event":"upsert","data":{"entity":"x"}}`,
-		"unknown data absent": snap + "\n" + `{"atMs":1,"event":"flow"}`,
-		"event data is wrong": snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":"x"}}`,
-		"event without id":    snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":{"reason":"X"}}}`,
+		"empty":                "",
+		"not JSON":             "nope",
+		"first not snapshot":   `{"atMs":0,"event":"upsert","data":{"entity":{"id":"x"}}}`,
+		"snapshot not at 0":    `{"atMs":5,"event":"snapshot","data":{}}`,
+		"missing atMs":         snap + "\n" + `{"event":"upsert","data":{"entity":{}}}`,
+		"negative atMs":        snap + "\n" + `{"atMs":-1,"event":"upsert","data":{"entity":{}}}`,
+		"atMs goes back":       snap + "\n" + `{"atMs":9,"event":"metrics","data":{}}` + "\n" + `{"atMs":8,"event":"metrics","data":{}}`,
+		"event name injects":   snap + "\n" + `{"atMs":1,"event":"upsert\ndata: x","data":{}}`,
+		"long event name":      snap + "\n" + `{"atMs":1,"event":"` + strings.Repeat("a", 33) + `","data":{}}`,
+		"typed data is wrong":  snap + "\n" + `{"atMs":1,"event":"upsert","data":{"entity":"x"}}`,
+		"unknown data absent":  snap + "\n" + `{"atMs":1,"event":"flow"}`,
+		"event data is wrong":  snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":"x"}}`,
+		"event without id":     snap + "\n" + `{"atMs":1,"event":"event","data":{"k8sEvent":{"reason":"X"}}}`,
+		"chain data is wrong":  snap + "\n" + `{"atMs":1,"event":"chain","data":{"steps":"x"}}`,
+		"chain without id":     snap + "\n" + `{"atMs":1,"event":"chain","data":{"steps":[{"verb":"created","object":"core/Pod/a/b"}]}}`,
+		"chain without steps":  snap + "\n" + `{"atMs":1,"event":"chain","data":{"id":"c","steps":[]}}`,
+		"chain step no object": snap + "\n" + `{"atMs":1,"event":"chain","data":{"id":"c","steps":[{"verb":"created"}]}}`,
+		"chain too long":       snap + "\n" + `{"atMs":1,"event":"chain","data":{"id":"c","steps":[` + strings.TrimSuffix(strings.Repeat(`{"verb":"created","object":"core/Pod/a/b"},`, 65), ",") + `]}}`,
 	} {
 		if _, err := LoadRecording(strings.NewReader(body)); err == nil {
 			t.Errorf("%s: LoadRecording succeeded, want an error", name)
@@ -147,7 +153,7 @@ func TestReplaySources(t *testing.T) {
 	}
 }
 
-// TestUnknownEventPassesThrough: types the hub does not model (metrics, chain, flow) replay
+// TestUnknownEventPassesThrough: types the recording does not decode (metrics, flow) replay
 // as recorded.
 func TestUnknownEventPassesThrough(t *testing.T) {
 	body := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{}}}` + "\n" +
@@ -162,5 +168,29 @@ func TestUnknownEventPassesThrough(t *testing.T) {
 	var got map[string]string
 	if last.Type != "flow" || json.Unmarshal(last.Data, &got) != nil || got["dst"] != "b" || strings.Contains(string(last.Data), "  ") {
 		t.Errorf("flow entry = %s %s, want the compact recorded data", last.Type, last.Data)
+	}
+}
+
+// TestChainReplaysTyped: a recorded chain is decoded as replay.Chain and reaches the hub's
+// ring with its steps intact.
+func TestChainReplaysTyped(t *testing.T) {
+	body := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{}}}` + "\n" +
+		`{"atMs":5,"event":"chain","data":{"id":"c1","steps":[{"at":"2026-11-10T10:00:00.000Z","actor":"kubectl","verb":"authentication","object":"apps/Deployment/a/b","derived":true}]}}`
+	rec, err := LoadRecording(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := rec.steps[1].events[0]
+	c, ok := ev.Data.(replay.Chain)
+	if !ok || c.ID != "c1" || len(c.Steps) != 1 || !c.Steps[0].Derived || c.Steps[0].Actor != "kubectl" {
+		t.Fatalf("chain decoded as %T %+v", ev.Data, ev.Data)
+	}
+	h := NewHub(HubOptions{})
+	publish(t, h, rec.steps[0].events...)
+	publish(t, h, ev)
+	last := h.ring[len(h.ring)-1]
+	var got replay.Chain
+	if last.Type != replay.EventChain || json.Unmarshal(last.Data, &got) != nil || got.Steps[0].Object != "apps/Deployment/a/b" {
+		t.Errorf("ring entry = %s %s", last.Type, last.Data)
 	}
 }
