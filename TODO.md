@@ -27,7 +27,7 @@ Phase 7 — Packaging, install and live e2e · PLAN-2026-11-09-1906-plan-visual-
 - CRD kinds outside the named RBAC groups (added 2026-11-09, plan D16).
 - OTLP receiver as a traffic source (added 2026-11-09, grill N4/row 6).
 - Cloud Audit Logs stream for real API-check steps (added 2026-11-09, grill Q7).
-- Elliptical, label-aware spacing to stop label overlaps (added 2026-11-09, mockup v3 nit).
+- ~~Elliptical, label-aware spacing to stop label overlaps~~ done via label-aware collision clearance and airier force distances (2026-11-11, plan D54).
 - ~~`test/kind/serve.sh`~~ done as `test/kind/install-check.sh` (2026-11-10, preflight fixes); the Playwright `live.spec.ts` stays a Phase 7 box.
 - `--allowed-host` flag so a DNS name in front of the LoadBalancer passes the Host guard; not in v1 (added 2026-11-10, ADR-008 decision F, plan D39).
 - IAP or an authenticated Ingress in front of the UI, for v2 (added 2026-11-10, ADR-008 rejected options).

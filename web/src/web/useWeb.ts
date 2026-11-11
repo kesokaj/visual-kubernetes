@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import type { RefObject } from 'react'
+import type { FilterState } from '../filter/state'
 import type { Graph } from '../lib/graph'
-import type { FilterGroup } from '../lib/wire'
 import { bounds, ease, fit, initialCamera, settled, type Camera } from './camera'
 import { Layout } from './layout'
 import { usePanZoom } from './panzoom'
@@ -19,10 +19,10 @@ export type WebState = {
 // useWeb is the controller of the force web: it rebuilds the scene from the graph and the
 // filter, feeds the layout, runs the camera and re-renders once per animation frame while
 // anything moves (bodies, the camera, a pulse or a pod travelling). fitNonce changes when the
-// presenter presses F or a filter changes; onSelect gets each click's object id (or null).
+// presenter presses F or a structural filter changes; onSelect gets each click's object id.
 export function useWeb(
   graph: Graph,
-  on: ReadonlySet<FilterGroup>,
+  filter: FilterState,
   fitNonce: number,
   onSelect: (id: string | null) => void,
 ): WebState {
@@ -41,7 +41,7 @@ export function useWeb(
   const size = useSize(svgRef)
 
   // version is the graph's change counter: the scene reads the graph, which mutates in place.
-  const scene = useMemo(() => buildScene(graph, on, palette), [graph, on, palette, version])
+  const scene = useMemo(() => buildScene(graph, filter, palette), [graph, filter, palette, version])
 
   useEffect(() => {
     layout.current?.update(scene)

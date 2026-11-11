@@ -37,8 +37,9 @@ export function Labels({ scene, bodies, cam }: { scene: Scene; bodies: Map<strin
         const { name, sub } = labelText(a)
         const x = (b.x ?? 0) * cam.k + cam.x
         const y = ((b.y ?? 0) + bodyBottom(a)) * cam.k + cam.y + NAME_GAP
+        const cls = a.dimmed ? 'dimmed' : !scene.focused && a.entity.filterGroup === 'system' ? 'sys' : undefined
         return (
-          <g key={a.id} data-label-for={a.id} className={a.entity.filterGroup === 'system' ? 'sys' : undefined}>
+          <g key={a.id} data-label-for={a.id} className={cls}>
             <text className="lbl name" x={x} y={y} textAnchor="middle">
               {name}
             </text>

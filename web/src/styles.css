@@ -70,6 +70,10 @@ body {
 .vk .sys {
   opacity: 0.5;
 }
+.vk .dimmed {
+  opacity: 0.16;
+  transition: opacity 0.16s ease;
+}
 
 .vk .edge {
   fill: none;
@@ -137,7 +141,103 @@ body {
   border-radius: 12px;
   padding: 6px;
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14);
-  min-width: 220px;
+  width: 264px;
+  max-height: calc(100vh - 76px);
+  overflow-y: auto;
+}
+.vk .f-sep {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 6px;
+}
+.vk .f-sec {
+  padding: 4px 6px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vk .f-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vk .f-sec-title,
+.vk .f-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.vk .f-sub {
+  margin-top: 2px;
+}
+.vk .f-mode {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+}
+.vk .f-mode-btn {
+  font: 12px/1.2 var(--font);
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.vk .f-mode-btn.on {
+  background: #fff;
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+}
+.vk .f-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.vk .f-chips.f-ns {
+  max-height: 84px;
+  overflow-y: auto;
+}
+.vk .f-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 12px/1.2 var(--font);
+  color: var(--ink-2);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  cursor: pointer;
+}
+.vk .f-ns .f-chip {
+  padding: 3px 9px;
+}
+.vk .f-chip:hover {
+  background: #f1f5f9;
+}
+.vk .f-chip svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.vk .f-chip.on {
+  background: #eff6ff;
+  border-color: var(--k8s);
+  color: var(--k8s);
+  font-weight: 600;
+}
+.vk .f-pill:focus-visible,
+.vk .f-sw:focus-visible,
+.vk .f-mode-btn:focus-visible,
+.vk .f-chip:focus-visible,
+.vk .f-all:focus-visible {
+  outline: 2px solid var(--k8s);
+  outline-offset: 2px;
 }
 .vk .f-row {
   display: flex;

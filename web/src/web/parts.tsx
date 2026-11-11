@@ -15,9 +15,12 @@ export function posOf(bodies: Map<string, Body>, id: string): Pos | null {
 // LinkView draws one edge: dashed control-plane links from the API server, node-coloured
 // threads from a node to the workloads it hosts, plain lines for the rest.
 export function LinkView({ link, from, to, scene }: { link: Link; from: Pos; to: Pos; scene: Scene }) {
-  const node = link.kind === 'hosts' ? scene.anchors.get(link.from)?.entity.name : undefined
+  const fromAnchor = scene.anchors.get(link.from)
+  const toAnchor = scene.anchors.get(link.to)
+  const node = link.kind === 'hosts' ? fromAnchor?.entity.name : undefined
   const color = node ? scene.nodeColor.get(node) : undefined
-  const cls = link.kind === 'member' ? 'cp-link' : link.kind === 'hosts' ? 'thread' : 'edge'
+  const base = link.kind === 'member' ? 'cp-link' : link.kind === 'hosts' ? 'thread' : 'edge'
+  const cls = fromAnchor?.dimmed || toAnchor?.dimmed ? `${base} dimmed` : base
   return (
     <line
       className={cls}
@@ -77,6 +80,7 @@ export function AnchorView({ a, at, scene, marks }: { a: Anchor; at: Pos; scene:
   const sys = a.entity.filterGroup === 'system'
   const app = a.role === 'app'
   const statics = scene.statics.get(a.id)
+  const cls = a.dimmed ? 'dimmed' : !scene.focused && sys ? 'sys' : undefined
   return (
     <g
       data-id={a.id}
@@ -89,7 +93,8 @@ export function AnchorView({ a, at, scene, marks }: { a: Anchor; at: Pos; scene:
       data-pulses={app ? (marks.pulse?.n ?? 0) : undefined}
       data-statics={statics ? statics.length : undefined}
       data-selected={marks.selected === a.id ? 'true' : undefined}
-      className={sys ? 'sys' : undefined}
+      data-dimmed={a.dimmed ? 'true' : undefined}
+      className={cls}
     >
       {a.top > 0 && <Halo at={at} r={a.icon * 1.05} />}
       {app && a.ring > 0 && <circle className="ring" cx={at.x} cy={at.y} r={a.ring} />}

@@ -11,18 +11,18 @@ import {
 } from 'd3-force'
 import type { Anchor, Link, Scene } from './scene'
 
-export type Body = SimulationNodeDatum & { id: string; r: number; role: Anchor['role'] }
+export type Body = SimulationNodeDatum & { id: string; r: number; collideR: number; role: Anchor['role'] }
 type BodyLink = SimulationLinkDatum<Body> & { kind: Link['kind'] }
 
-// Link rest lengths and pulls (plan D2, ADR-003): the API server holds nodes and the control
-// plane close; node→app threads are long and weak so apps settle between the nodes they use.
+// Link rest lengths and pulls (plan D2, D54, ADR-003): airy rest lengths keep control-plane
+// parts, worker nodes and workloads well clear of each other and their screen-space labels.
 const LINK = {
-  member: { distance: 240, strength: 0.5 },
-  hosts: { distance: 340, strength: 0.06 },
-  selects: { distance: 150, strength: 0.3 },
-  references: { distance: 150, strength: 0.3 },
-  routes: { distance: 170, strength: 0.3 },
-  parent: { distance: 120, strength: 0.4 },
+  member: { distance: 340, strength: 0.4 },
+  hosts: { distance: 480, strength: 0.05 },
+  selects: { distance: 240, strength: 0.25 },
+  references: { distance: 240, strength: 0.25 },
+  routes: { distance: 260, strength: 0.25 },
+  parent: { distance: 210, strength: 0.32 },
 } as const
 
 // Layout owns one d3-force simulation of the anchors. update() keeps every surviving body's
@@ -38,12 +38,12 @@ export class Layout {
 
   constructor(onTick: () => void) {
     this.sim = forceSimulation<Body, BodyLink>()
-      .force('charge', forceManyBody<Body>().strength((b) => -300 - b.r * 6).distanceMax(1400))
-      .force('collide', forceCollide<Body>((b) => b.r + 18).strength(0.9))
+      .force('charge', forceManyBody<Body>().strength((b) => -650 - b.collideR * 8).distanceMax(2200))
+      .force('collide', forceCollide<Body>((b) => b.collideR).strength(0.95).iterations(3))
       .force('link', this.links)
-      // A weaker pull on x than on y spreads the web wide, close to the 16:9 screen.
-      .force('x', forceX<Body>(0).strength(0.035))
-      .force('y', forceY<Body>(0).strength(0.07))
+      // A weaker pull on x than on y spreads the web wide across the 16:9 screen without squashing labels.
+      .force('x', forceX<Body>(0).strength(0.022))
+      .force('y', forceY<Body>(0).strength(0.042))
       .alphaDecay(0.025)
       .on('tick', onTick)
   }
@@ -57,8 +57,9 @@ export class Layout {
       const b = old ?? this.spawn(a, scene)
       if (!old) grown = true
       else if (Math.abs(b.r - a.r) > 12) grown = true // a ring appeared or left (Pods filter)
-      else if (Math.abs(b.r - a.r) > 0.5) resized = true
+      else if (Math.abs(b.r - a.r) > 0.5 || Math.abs(b.collideR - a.collideR) > 0.5) resized = true
       b.r = a.r
+      b.collideR = a.collideR
       b.role = a.role
       next.set(a.id, b)
     }
@@ -76,8 +77,8 @@ export class Layout {
     this.sim.nodes([...this.bodies.values()])
     this.links.links(scene.links.map((l) => ({ source: l.from, target: l.to, kind: l.kind })))
     // A changed cluster reheats the web; a resize only nudges it, so a metrics cycle every
-    // 5 s does not keep the layout boiling. A status-only change does not move anything.
-    if (grown) this.sim.alpha(Math.max(this.sim.alpha(), 0.5)).restart()
+    // 5 s does not keep the layout boiling. A status-only or highlight-only change moves nothing.
+    if (grown) this.sim.alpha(Math.max(this.sim.alpha(), 0.55)).restart()
     else if (resized) this.sim.alpha(Math.max(this.sim.alpha(), 0.12)).restart()
   }
 
@@ -93,10 +94,11 @@ export class Layout {
       .map((l) => this.bodies.get(l.to === a.id ? l.from : l.to))
       .find((b) => b !== undefined)
     const angle = hashAngle(a.id)
-    const dist = near ? 120 : 260
+    const dist = near ? 180 : 340
     return {
       id: a.id,
       r: a.r,
+      collideR: a.collideR,
       role: a.role,
       x: (near?.x ?? 0) + Math.cos(angle) * dist,
       y: (near?.y ?? 0) + Math.sin(angle) * dist,

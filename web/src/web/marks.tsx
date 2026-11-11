@@ -1,12 +1,15 @@
 import { Icon } from '../icons/sprite'
 import { PULSE_MS, TRAVEL_MS, type Pulse, type Travel } from '../lib/motion'
+import type { Camera } from './camera'
 import type { Body } from './layout'
 import { SIZE } from './scene'
 
 type Pos = { x: number; y: number }
 
-// HaloDefs holds the gradient the top-3 halo paints with (design/mockup-v3.html: #f5b83d).
-export function HaloDefs() {
+const MINOR_GRID = 'M 32 0 V 160 M 64 0 V 160 M 96 0 V 160 M 128 0 V 160 M 0 32 H 160 M 0 64 H 160 M 0 96 H 160 M 0 128 H 160'
+
+// HaloDefs holds the top-3 halo gradient and the world-synced drafting grid-paper pattern.
+export function HaloDefs({ cam }: { cam: Camera }) {
   return (
     <defs>
       <radialGradient id="vk-halo">
@@ -14,8 +17,31 @@ export function HaloDefs() {
         <stop offset="60%" stopColor="#f5b83d" stopOpacity={0.18} />
         <stop offset="100%" stopColor="#f5b83d" stopOpacity={0} />
       </radialGradient>
+      <pattern
+        id="vk-grid"
+        width={160}
+        height={160}
+        patternUnits="userSpaceOnUse"
+        patternTransform={`translate(${cam.x} ${cam.y}) scale(${cam.k})`}
+      >
+        {cam.k >= 0.42 && (
+          <path d={MINOR_GRID} fill="none" stroke="#f1f5f9" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        )}
+        <path
+          d="M 160 0 L 0 0 0 160"
+          fill="none"
+          stroke="#e2e8f0"
+          strokeOpacity={0.72}
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+      </pattern>
     </defs>
   )
+}
+
+export function GridPaper() {
+  return <rect width="100%" height="100%" fill="url(#vk-grid)" pointerEvents="none" data-testid="grid-paper" />
 }
 
 export function Halo({ at, r }: { at: Pos; r: number }) {

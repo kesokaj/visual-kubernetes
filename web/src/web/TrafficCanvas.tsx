@@ -22,12 +22,19 @@ function resolveAnchorId(id: string, scene: Scene, graph: Graph): string | null 
   return appId && scene.anchors.has(appId) ? appId : null
 }
 
-function endpointOf(id: string, scene: Scene, graph: Graph, bodies: Map<string, Body>): { pos: Pos; sys: boolean } | null {
+function endpointOf(
+  id: string,
+  scene: Scene,
+  graph: Graph,
+  bodies: Map<string, Body>,
+): { pos: Pos; sys: boolean; dimmed: boolean } | null {
   const aid = resolveAnchorId(id, scene, graph)
   if (!aid) return null
   const pos = posOf(bodies, aid)
   const anchor = scene.anchors.get(aid)
-  return pos && anchor ? { pos, sys: anchor.entity.filterGroup === 'system' } : null
+  return pos && anchor
+    ? { pos, sys: !scene.focused && anchor.entity.filterGroup === 'system', dimmed: anchor.dimmed }
+    : null
 }
 
 function drawEdges(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bodies: Map<string, Body>) {
@@ -43,7 +50,8 @@ function drawEdges(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bo
     const { a, b, c } = flowCurve(from.pos, to.pos)
     ctx.setLineDash(e.verdict === 'DROPPED' ? [5, 4] : [])
     ctx.strokeStyle = e.verdict === 'DROPPED' ? '#fca5a5' : '#cbd5e1'
-    ctx.globalAlpha = from.sys ? 0.4 : e.verdict === 'DROPPED' ? 0.85 : 0.7
+    ctx.globalAlpha =
+      from.dimmed || to.dimmed ? 0.12 : from.sys ? 0.4 : e.verdict === 'DROPPED' ? 0.85 : 0.7
     ctx.beginPath()
     ctx.moveTo(a.x, a.y)
     ctx.quadraticCurveTo(c.x, c.y, b.x, b.y)
@@ -59,7 +67,7 @@ function drawParticles(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene
     const to = endpointOf(p.dst, scene, graph, bodies)
     if (!from || !to) continue
     const pt = curvePoint(flowCurve(from.pos, to.pos), p.t)
-    ctx.globalAlpha = from.sys ? 0.4 : 0.95
+    ctx.globalAlpha = from.dimmed || to.dimmed ? 0.14 : from.sys ? 0.4 : 0.95
     ctx.fillStyle = p.verdict === 'DROPPED' ? '#dc2626' : '#3b82f6'
     ctx.beginPath()
     ctx.arc(pt.x, pt.y, p.verdict === 'DROPPED' ? 3 : 2.8, 0, Math.PI * 2)
@@ -76,7 +84,8 @@ function drawDrops(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bo
     const to = endpointOf(d.dst, scene, graph, bodies)
     if (!from || !to) continue
     const pt = curvePoint(flowCurve(from.pos, to.pos), DROP_AT)
-    ctx.globalAlpha = Math.max(0, 1 - (now - d.at) / DROP_MS)
+    const fade = Math.max(0, 1 - (now - d.at) / DROP_MS)
+    ctx.globalAlpha = from.dimmed || to.dimmed ? fade * 0.18 : fade
     ctx.beginPath()
     ctx.moveTo(pt.x - s, pt.y - s)
     ctx.lineTo(pt.x + s, pt.y + s)

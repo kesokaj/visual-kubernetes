@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { FilterPill, allOn } from '../filter/FilterPill'
+import { FilterPill } from '../filter/FilterPill'
+import { defaultFilter, type FilterState } from '../filter/state'
 import { Sprite } from '../icons/sprite'
 import { Graph, connect } from '../lib/graph'
-import { parseEvent, type FilterGroup } from '../lib/wire'
+import { parseEvent } from '../lib/wire'
 import { Panel } from '../panel/Panel'
 import { useReplay } from '../replay/useReplay'
 import { Web } from '../web/Web'
@@ -49,9 +50,16 @@ function useKeys(keys: Keys) {
   }, [])
 }
 
+function refitDue(prev: FilterState, next: FilterState): boolean {
+  if (prev.groups !== next.groups || prev.showSelf !== next.showSelf || prev.mode !== next.mode) {
+    return true
+  }
+  return next.mode === 'only' && (prev.kinds !== next.kinds || prev.namespaces !== next.namespaces)
+}
+
 function Page() {
   const [graph] = useState(() => new Graph())
-  const [on, setOn] = useState<ReadonlySet<FilterGroup>>(allOn)
+  const [filter, setFilter] = useState<FilterState>(defaultFilter)
   const [fitNonce, setFitNonce] = useState(0)
   const [pill, setPill] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
@@ -72,16 +80,16 @@ function Page() {
     step: () => player.step(),
   })
 
-  const changeFilter = (next: ReadonlySet<FilterGroup>) => {
-    setOn(next)
-    fitAgain() // hidden groups leave the layout and the web re-fits
+  const changeFilter = (next: FilterState) => {
+    if (refitDue(filter, next)) fitAgain()
+    setFilter(next)
   }
 
   return (
     <main className="vk">
       <Sprite />
-      <Web graph={graph} on={on} fitNonce={fitNonce} selected={selected} onSelect={setSelected} play={play} />
-      {pill && <FilterPill on={on} onChange={changeFilter} />}
+      <Web graph={graph} filter={filter} fitNonce={fitNonce} selected={selected} onSelect={setSelected} play={play} />
+      {pill && <FilterPill graph={graph} filter={filter} onChange={changeFilter} />}
       {selected && <Panel key={selected} graph={graph} id={selected} onClose={close} onSelect={setSelected} />}
     </main>
   )

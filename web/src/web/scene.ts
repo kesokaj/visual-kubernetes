@@ -1,5 +1,12 @@
+import {
+  hasFocusFilter,
+  isSelfEntity,
+  matchesApp,
+  matchesLooseSat,
+  type FilterState,
+} from '../filter/state'
 import type { Graph } from '../lib/graph'
-import type { Edge, EdgeKind, Entity, FilterGroup, SizeBy } from '../lib/wire'
+import type { Edge, EdgeKind, Entity, SizeBy } from '../lib/wire'
 import { MAX_BUBBLES, foldedStatics, overBudgetCounter } from './folding'
 import { sizeApps } from './sizing'
 
@@ -24,11 +31,13 @@ export type Anchor = {
   icon: number // icon size
   ring: number // pod ring radius (apps), else 0
   satR: number // satellite orbit radius (apps), else 0
-  r: number // body radius for collisions and the camera fit
+  r: number // body radius for the camera fit
+  collideR: number // collision clearance radius including screen-space label room
   pods: Entity[]
   sats: Entity[]
   measure: number // the sizeBy value (apps)
   top: number // 1–3 for the halo, else 0
+  dimmed: boolean // dimmed in place when a Highlight focus filter does not match
 }
 
 export type Link = { id: string; from: string; to: string; kind: EdgeKind }
@@ -40,6 +49,7 @@ export type Scene = {
   counters: Entity[] // corner counters: the model's counter/* plus the page's over-budget one
   statics: Map<string, string[]> // cp/* id → static-pod apps folded behind it (D30)
   sizeBy: SizeBy
+  focused: boolean
 }
 
 function roleOf(e: Entity): Role | 'counter' | null {
@@ -62,31 +72,91 @@ export function ringRadius(pods: number, icon: number = SIZE.app): number {
   return Math.max(icon / 2 + 48, (pods * POD_GAP) / (2 * Math.PI))
 }
 
-function anchorFor(e: Entity, role: Role): Anchor {
-  const icon = baseIcon(role)
-  return { id: e.id, entity: e, role, icon, ring: 0, satR: 0, r: icon / 2 + 10, pods: [], sats: [], measure: 0, top: 0 }
+function collideClearance(e: Entity, role: Role, r: number): number {
+  const sub =
+    role === 'app'
+      ? [e.namespace, e.status].filter(Boolean).join(' · ')
+      : role === 'sat'
+        ? e.kind
+        : e.status
+  const labelSpan = Math.min(165, Math.max(e.name.length * 5.8, sub.length * 4.8))
+  return Math.max(r + 62, 96, labelSpan + 18)
 }
 
-// buildScene applies the filter (plan D3): an entity shows when its group is on; pods and
-// app-owned satellites also need their app; a link needs both ends drawn. Folded entities
-// (S5), static control-plane pods with a cp/* entity (D30) and bodies past the bubble budget
-// are left out; counters go to the corner.
-export function buildScene(g: Graph, on: ReadonlySet<FilterGroup>, palette: Map<string, string>): Scene {
+function anchorFor(e: Entity, role: Role): Anchor {
+  const icon = baseIcon(role)
+  const r = icon / 2 + 10
+  return {
+    id: e.id,
+    entity: e,
+    role,
+    icon,
+    ring: 0,
+    satR: 0,
+    r,
+    collideR: collideClearance(e, role, r),
+    pods: [],
+    sats: [],
+    measure: 0,
+    top: 0,
+    dimmed: false,
+  }
+}
+
+function applyFocus(anchors: Map<string, Anchor>, edges: readonly Edge[], filter: FilterState): void {
+  const matchedApps = new Set<string>()
+  const matchedSats = new Set<string>()
+  for (const a of anchors.values()) {
+    if (a.role === 'app' && matchesApp(a.entity, filter)) matchedApps.add(a.id)
+  }
+  for (const a of anchors.values()) {
+    if (a.role === 'sat' && matchesLooseSat(a.entity, matchedApps, edges, filter)) matchedSats.add(a.id)
+  }
+  if (filter.mode === 'highlight') {
+    for (const a of anchors.values()) {
+      a.dimmed = !matchedApps.has(a.id) && !matchedSats.has(a.id)
+    }
+    return
+  }
+  for (const [id, a] of anchors) {
+    if (a.role === 'app' && !matchedApps.has(id)) anchors.delete(id)
+    else if (a.role === 'sat' && !matchedSats.has(id)) anchors.delete(id)
+    else if (a.role === 'cp') anchors.delete(id)
+  }
+  const hostedNodes = new Set<string>()
+  for (const e of edges) {
+    if (e.kind === 'hosts' && anchors.has(e.to)) hostedNodes.add(e.from)
+  }
+  for (const [id, a] of anchors) {
+    if (a.role === 'node' && !hostedNodes.has(id)) anchors.delete(id)
+  }
+}
+
+// buildScene applies group switches, self-visibility and focus filters (plan D3, D54).
+export function buildScene(g: Graph, filter: FilterState, palette: Map<string, string>): Scene {
   const statics = foldedStatics(g.entities)
   const hidden = new Set([...statics.values()].flat())
   const anchors = new Map<string, Anchor>()
   const riders: Entity[] = []
   const counters: Entity[] = []
   const podCount = new Map<string, number>()
+  const focused = hasFocusFilter(filter)
   for (const e of g.entities.values()) {
     if (e.folded || hidden.has(e.id) || (e.appId && hidden.has(e.appId))) continue
+    if (!filter.showSelf && isSelfEntity(e, g.entities)) continue
     if (e.kind === 'Pod' && e.appId) podCount.set(e.appId, (podCount.get(e.appId) ?? 0) + 1)
-    if (!on.has(e.filterGroup)) continue
+    if (!filter.groups.has(e.filterGroup)) continue
     const role = roleOf(e)
-    if (role === 'counter') counters.push(e)
-    else if (role === null || (role === 'sat' && e.appId)) riders.push(e)
-    else anchors.set(e.id, anchorFor(e, role))
+    if (role === 'counter') {
+      if (!(focused && filter.mode === 'only')) counters.push(e)
+    } else if (role === null || (role === 'sat' && e.appId)) {
+      riders.push(e)
+    } else {
+      anchors.set(e.id, anchorFor(e, role))
+    }
   }
+  const allEdges = [...g.edges.values()]
+  if (focused) applyFocus(anchors, allEdges, filter)
   for (const e of riders) {
     const app = e.appId ? anchors.get(e.appId) : undefined
     if (!app) continue
@@ -96,15 +166,15 @@ export function buildScene(g: Graph, on: ReadonlySet<FilterGroup>, palette: Map<
   const apps = [...anchors.values()].filter((a) => a.role === 'app')
   const sizeBy = sizeApps(apps, g.metrics, podCount)
   const over = keepBudget(anchors)
-  if (over > 0 && on.has('system')) counters.push(overBudgetCounter(over))
-  shapeApps(anchors, on.has('pods'))
+  if (over > 0 && filter.groups.has('system')) counters.push(overBudgetCounter(over))
+  shapeApps(anchors, filter.groups.has('pods'))
   const links: Link[] = []
-  for (const e of g.edges.values()) {
+  for (const e of allEdges) {
     if (anchors.has(e.from) && anchors.has(e.to)) links.push(linkOf(e))
   }
   links.sort((x, y) => x.id.localeCompare(y.id))
   counters.sort((x, y) => x.id.localeCompare(y.id))
-  return { anchors, links, nodeColor: nodeColors(g, palette), counters, statics, sizeBy }
+  return { anchors, links, nodeColor: nodeColors(g, palette), counters, statics, sizeBy, focused }
 }
 
 // shapeApps sorts each app's riders and sets its rings from its (possibly resized) icon.
@@ -117,6 +187,7 @@ function shapeApps(anchors: Map<string, Anchor>, podsOn: boolean): void {
     // With Pods hidden the ring leaves too, so apps shrink and the web closes up.
     a.ring = podsOn ? ringRadius(a.pods.length, a.icon) : 0
     a.r = podsOn ? a.ring + SIZE.pod / 2 + 8 : a.satR + SIZE.sat / 2 + 8
+    a.collideR = collideClearance(a.entity, 'app', a.r)
   }
 }
 

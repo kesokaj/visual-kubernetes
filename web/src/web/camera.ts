@@ -7,9 +7,9 @@ export type Box = { minX: number; minY: number; maxX: number; maxY: number }
 
 export const ZOOM_MIN = 0.25
 export const ZOOM_MAX = 4
-const FIT_PAD = 36 // screen pixels kept clear around the fit (mockup)
-const FIT_MAX = 1.6 // a tiny cluster is not blown up past this
-const LABEL_ROOM = 44 // labels sit under bodies, outside their radius
+const FIT_PAD = 48 // screen pixels kept clear around the fit
+const FIT_MAX = 1.35 // a tiny or filtered cluster stays airy instead of blowing up huge
+const LABEL_ROOM = 58 // labels sit under bodies, outside their radius
 
 export const initialCamera = (): Camera => ({ x: 0, y: 0, k: 1, auto: true })
 

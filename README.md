@@ -36,12 +36,15 @@ design/                 # approved mockup
 
 ## Using the page
 
+Everything on the page is driven by direct clicks, pointer pan/zoom, a compact bottom-left filter menu, and single-key presenter shortcuts.
+
 | Action | Effect |
 |--------|--------|
 | Click a bubble | Opens the panel for it (click a pod chip in an app's panel to open that pod) |
 | Esc, ×, or a click on empty space | Closes the panel; Esc also hides the replay caption |
 | Wheel / drag | Zoom and pan; the camera stops auto-fitting |
 | F | Fit the whole web again and resume auto-fit |
+| Filter pill (bottom-left) | Toggle the 8 component groups (all on), show `visual-kubernetes` itself (hidden by default), or `Highlight` / `Only show` matching `Deployment`, `StatefulSet`, `DaemonSet` and `Namespace` items |
 | V | Hide or show the filter pill |
 | R | Replay the newest causal chain received since the page opened (1 step/s); recorded streams (`--replay`) only until live chains land (plan D48) |
 | Space | Pause or resume replay |
@@ -54,7 +57,8 @@ The panel shows, per object:
 - **API server:** every data source and its probe state (`ok`, `missing`, `denied`, `unreachable`, `error`), the same list `visual-kubernetes probe` prints.
 - **Inferred control-plane part (`cp/*`):** the evidence it was inferred from and the static pods folded behind it.
 
-> **Warning:** logs are the application's own output and can contain secrets (tokens, passwords, personal data). Anyone who can open the page can read the last 200 lines of any pod's logs. The page never stores or forwards them, but treat a shared screen accordingly, and keep the UI behind `kubectl port-forward`.
+> [!WARNING]
+> Logs are the application's own output and can contain secrets (tokens, passwords, personal data). Anyone who can open the page can read the last 200 lines of any pod's logs. The page never stores or forwards them, but treat a shared screen accordingly, and keep the UI behind `kubectl port-forward`.
 
 What the web encodes:
 
