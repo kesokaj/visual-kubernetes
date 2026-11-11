@@ -1,0 +1,225 @@
+# visual-kubernetes (opt-in LoadBalancer variant): read-only, real-time view of a cluster's
+# internals behind a source-range-limited LoadBalancer Service with pod logs off (PRD R7,
+# ADR-008, D37, D38, D47). Prefer install.yaml (ClusterIP + kubectl port-forward) whenever
+# port-forward works.
+#
+#   curl -fsSLO https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install-lb.yaml
+#   sed -i.bak 's|192.0.2.0/32|<YOUR_IP>/32|g' install-lb.yaml
+#   kubectl apply -f install-lb.yaml
+#
+# Switching back to ClusterIP (install.yaml): delete visual-kubernetes-lb-ingress first (or run
+# `kubectl delete -f install-lb.yaml`), because Kubernetes NetworkPolicy ingress rules are
+# additive across policies in the same namespace.
+#
+# WARNING — NO AUTHENTICATION:
+# - Anyone inside loadBalancerSourceRanges can open the page and read every object in the
+#   watched API groups (Secrets excluded, including pod specs and env values).
+# - 192.0.2.0/32 is an RFC 5737 documentation address (fail-closed placeholder) set on both
+#   Service.spec.loadBalancerSourceRanges and NetworkPolicy.spec.ingress[0].from: you MUST
+#   replace it in both places with your own CIDR(s) (for example 203.0.113.10/32). Never set
+#   0.0.0.0/0 or ::/0 — that exposes cluster objects to the public internet.
+# - Service sets externalTrafficPolicy: Local so external client source IPs reach the pod
+#   un-SNATed and in-cluster pods cannot bypass loadBalancerSourceRanges via ClusterIP or pod
+#   IP. If your cloud LoadBalancer SNATs client IPs (for example an L4 proxy LB) or probes pod
+#   port 8080 directly instead of healthCheckNodePort, also add its proxy/health-check CIDR(s)
+#   under NetworkPolicy.spec.ingress[0].from.
+# - loadBalancerSourceRanges holds only where the cluster's LoadBalancer implementation
+#   enforces it. For an internal-only LoadBalancer, add your cloud provider's Service
+#   annotation before applying (for example networking.gke.io/load-balancer-type: "Internal").
+# - Pod logs are disabled (--logs=false: /api/logs answers 403).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: visual-kubernetes
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - endpoints
+      - events
+      - limitranges
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+      - persistentvolumes
+      - pods
+      - podtemplates
+      - replicationcontrollers
+      - resourcequotas
+      - serviceaccounts
+      - services
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [nodes/stats, pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    # PRD R2's one named exception: the mTLS client cert for GKE Dataplane V2's Hubble Relay.
+    resources: [secrets]
+    resourceNames: [hubble-relay-client-certs]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [controllerrevisions, daemonsets, deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [cronjobs, jobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling.k8s.io]
+    resources: [verticalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingressclasses, ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gatewayclasses, gateways, grpcroutes, httproutes]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [csidrivers, csinodes, storageclasses, volumeattachments]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [nodes, pods]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics, /readyz]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: visual-kubernetes
+subjects:
+  - kind: ServiceAccount
+    name: visual-kubernetes
+    namespace: visual-kubernetes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visual-kubernetes
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: visual-kubernetes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: visual-kubernetes
+    spec:
+      serviceAccountName: visual-kubernetes
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: visual-kubernetes
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --logs=false
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: visual-kubernetes
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  # REQUIRED: replace 192.0.2.0/32 (RFC 5737 TEST-NET-1 placeholder) with your client CIDR(s)
+  # here and in NetworkPolicy visual-kubernetes-lb-ingress below. Never use 0.0.0.0/0 or ::/0 —
+  # the UI has no authentication (PRD R7, ADR-008).
+  loadBalancerSourceRanges:
+    - 192.0.2.0/32
+  selector:
+    app.kubernetes.io/name: visual-kubernetes
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: visual-kubernetes-lb-ingress
+  namespace: visual-kubernetes
+  labels:
+    app.kubernetes.io/name: visual-kubernetes
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.0.2.0/32
+      ports:
+        - protocol: TCP
+          port: http

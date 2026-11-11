@@ -7,11 +7,13 @@ import (
 )
 
 // HostGuard refuses requests whose Host header names anything but an IP literal, `localhost`
-// or one of extra (the --addr host when it is a name). The server has no auth (R7): it relies
-// on loopback and port-forward, and a page in the presenter's browser could otherwise rebind
-// its own DNS name to 127.0.0.1 and read the stream, objects and logs as same-origin (DNS
-// rebinding). An attacker controls only names, never which IP literal the browser sends, so IP
-// hosts stay allowed; that also keeps the kubelet's readiness probe (Host = pod IP) working.
+// or one of extra (the --addr host when it is a name). The server has no auth (R7, ADR-008):
+// default installs rely on loopback and port-forward (and install-lb.yaml on source-range
+// filtering at the LoadBalancer IP), so a page in the presenter's browser could otherwise
+// rebind its own DNS name to 127.0.0.1 and read the stream, objects and logs as same-origin
+// (DNS rebinding). An attacker controls only names, never which IP literal the browser sends,
+// so IP hosts stay allowed; that also keeps the LoadBalancer IP (D39) and the kubelet's
+// readiness probe (Host = pod IP) working.
 func HostGuard(next http.Handler, extra ...string) http.Handler {
 	allowed := map[string]bool{"localhost": true}
 	for _, h := range extra {

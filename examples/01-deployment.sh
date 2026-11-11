@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Example 01: create a Deployment, scale it, remove it, and watch the web follow each step
-# (R replays a causal chain on recorded streams only until plan D48 wires it live). Uses your current kubectl context unless KUBECONFIG says
+# (press R in the UI to replay each causal chain). Uses your current kubectl context unless KUBECONFIG says
 # otherwise; NS (default vk-demo) is created on up; down deletes the manifest's objects and keeps NS.
 #   examples/01-deployment.sh up | scale [N] | down
 set -euo pipefail

@@ -24,12 +24,13 @@ import (
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
 )
 
-const usage = `usage: visual-kubernetes [--kubeconfig PATH] [--addr ADDR] [--replay FILE]
+const usage = `usage: visual-kubernetes [--kubeconfig PATH] [--addr ADDR] [--replay FILE] [--logs=true|false]
        visual-kubernetes probe [--kubeconfig PATH]
 
 (default)  watch the cluster and serve /api/stream, /api/objects, /api/logs and /healthz;
            --addr defaults to 127.0.0.1:8080 outside a cluster and :8080 inside one;
-           --replay FILE plays a recorded NDJSON stream instead of contacting any cluster
+           --replay FILE plays a recorded NDJSON stream instead of contacting any cluster;
+           --logs=false disables /api/logs with 403 (used by install-lb.yaml)
 probe      print one line per data source: <source> ok|missing|denied|unreachable|error <detail>
 `
 
@@ -53,6 +54,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, log *slog
 	fs.StringVar(&o.kubeconfig, "kubeconfig", "", kubeconfigHelp)
 	fs.StringVar(&o.addr, "addr", "", "listen address (default 127.0.0.1:8080 locally, :8080 in a cluster)")
 	fs.StringVar(&o.replay, "replay", "", "serve a recorded NDJSON stream instead of a cluster")
+	fs.BoolVar(&o.logs, "logs", true, "serve pod logs on /api/logs (set false on shared LoadBalancer installs)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

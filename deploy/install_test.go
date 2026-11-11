@@ -25,10 +25,11 @@ func policy(objs []runtime.Object) *networkingv1.NetworkPolicy {
 	return only[*networkingv1.NetworkPolicy](objs)[0]
 }
 func service(objs []runtime.Object) *corev1.Service { return only[*corev1.Service](objs)[0] }
-func container(objs []runtime.Object) *corev1.Container {
-	dep, _ := appPod(objs)
+func containerIn(objs []runtime.Object, ns string) *corev1.Container {
+	dep, _ := appPodIn(objs, ns)
 	return &dep.Spec.Template.Spec.Containers[0]
 }
+func container(objs []runtime.Object) *corev1.Container { return containerIn(objs, appName) }
 
 func addRule(r rbacv1.PolicyRule) mutation {
 	return func(objs []runtime.Object) []runtime.Object {
@@ -47,23 +48,28 @@ func without[T runtime.Object](objs []runtime.Object) []runtime.Object {
 	return out
 }
 
-// checkBothWays runs check on install.yaml (no violation allowed) and on each mutated copy
-// (at least one violation required). The mutants assume the file's shape, so a failing file
-// stops the test before them.
-func checkBothWays(t *testing.T, check func([]runtime.Object) []string, mutants map[string]mutation) {
+// checkFileBothWays runs check on path (no violation allowed) and on each mutated copy (at
+// least one violation required). The mutants assume the file's shape, so a failing file stops
+// the test before them.
+func checkFileBothWays(t *testing.T, path string, check func([]runtime.Object) []string, mutants map[string]mutation) {
 	t.Helper()
-	if bad := check(decodeFile(t, installPath)); len(bad) > 0 {
-		t.Fatalf("install.yaml: %v", bad)
+	if bad := check(decodeFile(t, path)); len(bad) > 0 {
+		t.Fatalf("%s: %v", path, bad)
 	}
 	for name, mutate := range mutants {
-		if bad := check(mutate(decodeFile(t, installPath))); len(bad) == 0 {
-			t.Errorf("must-fail %q: no violation reported", name)
+		if bad := check(mutate(decodeFile(t, path))); len(bad) == 0 {
+			t.Errorf("%s must-fail %q: no violation reported", path, name)
 		}
 	}
 }
 
-func TestInstallRBACIsReadOnly(t *testing.T) {
-	checkBothWays(t, rbacViolations, map[string]mutation{
+func checkBothWays(t *testing.T, check func([]runtime.Object) []string, mutants map[string]mutation) {
+	t.Helper()
+	checkFileBothWays(t, installPath, check, mutants)
+}
+
+func rbacMutants(ns string) map[string]mutation {
+	return map[string]mutation{
 		"write verb":        addRule(rbacv1.PolicyRule{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"get", "patch"}}),
 		"all secrets":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"}}),
 		"secret listing":    addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"secrets"}, ResourceNames: []string{secretsAllow}, Verbs: []string{"get", "list"}}),
@@ -92,10 +98,25 @@ func TestInstallRBACIsReadOnly(t *testing.T) {
 			return objs
 		},
 		"extra Role": func(objs []runtime.Object) []runtime.Object {
-			return append(objs, &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: appName}})
+			return append(objs, &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: "x", Namespace: ns}})
 		},
 		"no ClusterRole": without[*rbacv1.ClusterRole],
-	})
+	}
+}
+
+func TestInstallManifestReadOnly(t *testing.T) {
+	for _, m := range []struct {
+		path string
+		ns   string
+	}{
+		{installPath, appName},
+		{kubeSystemPath, kubeSystemNS},
+		{lbPath, appName},
+	} {
+		t.Run(m.path, func(t *testing.T) {
+			checkFileBothWays(t, m.path, rbacViolationsIn(m.ns), rbacMutants(m.ns))
+		})
+	}
 }
 
 func TestInstallDeniesAllIngress(t *testing.T) {
@@ -128,23 +149,33 @@ func TestInstallDeniesAllIngress(t *testing.T) {
 }
 
 func TestInstallServiceIsClusterIP(t *testing.T) {
-	checkBothWays(t, serviceViolations, map[string]mutation{
-		"LoadBalancer": func(objs []runtime.Object) []runtime.Object {
-			service(objs).Spec.Type = corev1.ServiceTypeLoadBalancer
-			return objs
-		},
-		"NodePort": func(objs []runtime.Object) []runtime.Object {
-			service(objs).Spec.Type = corev1.ServiceTypeNodePort
-			return objs
-		},
-		"externalIPs": func(objs []runtime.Object) []runtime.Object {
-			service(objs).Spec.ExternalIPs = []string{"203.0.113.7"}
-			return objs
-		},
-		"second Service": func(objs []runtime.Object) []runtime.Object {
-			return append(objs, service(objs).DeepCopy())
-		},
-	})
+	for _, m := range []struct {
+		path string
+		ns   string
+	}{
+		{installPath, appName},
+		{kubeSystemPath, kubeSystemNS},
+	} {
+		t.Run(m.path, func(t *testing.T) {
+			checkFileBothWays(t, m.path, serviceViolationsIn(m.ns), map[string]mutation{
+				"LoadBalancer": func(objs []runtime.Object) []runtime.Object {
+					service(objs).Spec.Type = corev1.ServiceTypeLoadBalancer
+					return objs
+				},
+				"NodePort": func(objs []runtime.Object) []runtime.Object {
+					service(objs).Spec.Type = corev1.ServiceTypeNodePort
+					return objs
+				},
+				"externalIPs": func(objs []runtime.Object) []runtime.Object {
+					service(objs).Spec.ExternalIPs = []string{"203.0.113.7"}
+					return objs
+				},
+				"second Service": func(objs []runtime.Object) []runtime.Object {
+					return append(objs, service(objs).DeepCopy())
+				},
+			})
+		})
+	}
 }
 
 func TestInstallPodIsRestricted(t *testing.T) {

@@ -3,11 +3,8 @@
 Small manifests for live demos with visual-kubernetes open on the projector. Each one has a
 script that applies it, drives the change the audience should watch, and cleans up.
 
-> **Replay keys are recorded-stream only for now.** **R** replays a causal chain at about one
-> step a second (**Space** pauses, **→** shows the next step, **Esc** hides the caption), but
-> only on a recorded stream (`--replay test/fixtures/streams/deploy-scale.ndjson`). A live
-> server does not build chains yet (plan D48), so after a live change R does nothing; the web
-> itself still shows every object, pod and Event as it happens.
+> [!TIP]
+> **Teaching replay:** Press **R** after a change to replay its causal chain at 1 step/s (**Space** pauses/resumes, **→** steps forward, **Esc** hides the caption), both on a live cluster and on `--replay test/fixtures/streams/deploy-scale.ndjson`.
 
 The scripts use your current `kubectl` context (or `KUBECONFIG`) and print it first: point
 them at a demo cluster, never a production one. Everything goes into the namespace `vk-demo`

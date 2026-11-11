@@ -1,7 +1,7 @@
 # PRD — visual-kubernetes
 
 A read-only, real-time visualizer of a Kubernetes cluster's internals on one white page, for live teaching demos.
-Status: approved · Owner: kesokaj · Last updated: 2026-11-10 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
+Status: approved · Owner: kesokaj · Last updated: 2026-11-11 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
 
 <!-- Read before every significant change. Immutable without the user's explicit approval of the exact text:
      propose the edit → approval → ADR → PRD.md and TODO.md in one commit (global context § Hard rules).
@@ -39,19 +39,19 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 ## Must — non-negotiable
 
 - **R1** — The app only reads: its RBAC grants get, list and watch (plus `get` on `nodes/stats`, `pods/log` and the named non-resource URLs) and no verb that writes.
-  <!-- provenance: operator "Remember this is only to visualize.", 2026-11-09; enforced by: AGENTS.md § Project-Specific Standards (test planned in Phase 6: kind e2e `kubectl auth can-i --list` check) -->
+  <!-- provenance: operator "Remember this is only to visualize.", 2026-11-09; enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `test/e2e/live.spec.ts` validateCanIList (each validated in its must-fail state) -->
 - **R2** — The app never reads Secrets, except `get` on the secret `hubble-relay-client-certs` by `resourceNames`.
-  <!-- provenance: grill Q8 + row 5, 2026-11-09; enforced by: not yet enforced: RBAC manifest test in deploy/ (plan Phase 6) -->
+  <!-- provenance: grill Q8 + row 5, 2026-11-09; enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `internal/watch/watch_test.go` TestWatcherNeverReadsSecrets, `internal/model/satellites_test.go` TestSecretsAndEventsAreNeverStored -->
 - **R3** — Installation is one `kubectl apply -f install.yaml`; any added step needs the operator's approval.
-  <!-- provenance: operator "The install needs to be super easy.", 2026-11-09; enforced by: AGENTS.md § Project-Specific Standards (test planned in Phase 6: kind install e2e) -->
+  <!-- provenance: operator "The install needs to be super easy.", 2026-11-09; enforced by: `deploy/install.yaml`, `test/kind/install-check.sh`, `test/e2e/live.sh` -->
 - **R4** — The app works on any conformant cluster that grants its RBAC, using built-in APIs first; missing optional sources degrade the view, never break it.
-  <!-- provenance: operator "it should work on all clusters when having the correct permissions", "use as much built in as possible", 2026-11-09; enforced by: not yet enforced: probe unit tests per source state (plan Phase 0) -->
+  <!-- provenance: operator "it should work on all clusters when having the correct permissions", "use as much built in as possible", 2026-11-09; enforced by: `internal/probe/probe_test.go` TestProbeStates, `internal/watch/watch_test.go` TestWatcherSyncsAroundForbiddenGroup, `test/e2e/live.spec.ts` -->
 - **R5** — The page reflects cluster changes in real time and shows the causal chain of each observed change with pause, step and replay.
-  <!-- provenance: operator turn 1 "visualizing everything in real time"; grill Q2, 2026-11-09; enforced by: not yet enforced: replay e2e (plan Phase 4) -->
-- **R6** — The page is white, uses a force-directed web with official Kubernetes icons, and shows no chrome except a filter pill (all groups on by default) and a click panel.
-  <!-- provenance: operator 2026-11-09 15:33 ("skip the hierarchy", "small filtering view … default is everything on"); enforced by: design/mockup-v3.html (test planned in Phase 2: Playwright filter and layout specs) -->
+  <!-- provenance: operator turn 1 "visualizing everything in real time"; grill Q2, 2026-11-09; enforced by: `cmd/visual-kubernetes/serve_test.go` TestChainSinkPrimesThenObserves, `test/e2e/replay.spec.ts`, `test/e2e/live.spec.ts` -->
+- **R6** — The page is white with a subtle grid-paper background, uses an airy force-directed web with official Kubernetes icons, hides `visual-kubernetes` itself by default, and shows no chrome except a compact filter pill (8 component groups on by default, a `visual-kubernetes` toggle, and `Deployment`/`StatefulSet`/`DaemonSet` and `Namespace` highlight-or-only-show filters) and a click panel.
+  <!-- provenance: operator 2026-11-09 15:33 ("skip the hierarchy", "small filtering view … default is everything on"), amended 2026-11-11 (D54: grid paper, airy spacing, self-hide, workload-kind & namespace focus filters); enforced by: `test/e2e/web.spec.ts`, `test/e2e/filter.spec.ts`, `test/e2e/panel.spec.ts` -->
 - **R7** — The default install exposes the UI only through a ClusterIP Service and `kubectl port-forward`. A separate opt-in manifest, `install-lb.yaml`, exposes it through a network LoadBalancer Service whose `loadBalancerSourceRanges` the operator must set. That variant starts with the pod-logs panel off, and the docs say the page has no authentication, so anyone inside those ranges can read the cluster's objects.
-  <!-- provenance: operator "loadbalancer yes", 2026-11-10 (supersedes grill Q10 + row 12); enforced by: not yet enforced: deploy/ manifest tests (plan Phase 7: TestInstallServiceIsClusterIP, TestInstallLBRequiresSourceRanges) -->
+  <!-- provenance: operator "loadbalancer yes", 2026-11-10 (supersedes grill Q10 + row 12; ADR-008); enforced by: `deploy/install_test.go` TestInstallServiceIsClusterIP, `deploy/variants_test.go` TestInstallLBRequiresSourceRanges, `cmd/visual-kubernetes/serve_test.go` TestRunLogsFlag, `test/e2e/panel.spec.ts` -->
 - **R8** — Kubelet connections always verify TLS; the app never uses `nodes/proxy` or skips verification.
   <!-- provenance: grill row 4, 2026-11-09; enforced by: `internal/kubelet/client_test.go` TestClientRefusesUnverifiedCert (fails when verification is disabled; ADR-005) -->
 - **R9** — The image serves every UI asset; the page makes no external network request at runtime.
@@ -62,17 +62,17 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 ## Should — expected unless a decision says otherwise
 
 - **S1** — Installs by default into its own namespace `visual-kubernetes` with PSA `restricted`, with a kube-system variant manifest.
-  <!-- provenance: grill N6, 2026-11-09; enforced by: not yet enforced: kind install e2e (plan Phase 6) -->
+  <!-- provenance: grill N6, 2026-11-09; enforced by: `deploy/install_test.go` TestInstallPodIsRestricted, `deploy/variants_test.go` TestInstallKubeSystemVariant, `test/kind/install-check.sh` -->
 - **S2** — App bubbles are sized by network throughput from kubelet stats (hostNetwork pods excluded), falling back to CPU then pod count; the top 3 get a halo.
-  <!-- provenance: operator "services with most data would be bigger and highlighted"; grill N2, 2026-11-09; enforced by: not yet enforced: sizing unit tests (plan Phase 1) -->
+  <!-- provenance: operator "services with most data would be bigger and highlighted"; grill N2, 2026-11-09; enforced by: `internal/sources/sources_test.go` TestHostNetworkPodsExcluded, `internal/sources/sources_test.go` TestSizeFallback, `test/e2e/encodings.spec.ts` -->
 - **S3** — Traffic between pods and services is drawn from Hubble Relay when it is present, auto-detected at the Cilium and GKE DPv2 addresses.
-  <!-- provenance: grill N4, 2026-11-09; enforced by: not yet enforced: hubble client unit tests (plan Phase 5) -->
+  <!-- provenance: grill N4, 2026-11-09; enforced by: `internal/hubble/client_test.go` TestAutoDetectCiliumPlaintextAggregatesFlows, `internal/hubble/client_test.go` TestAutoDetectGKEDPv2mTLS, `test/e2e/traffic.spec.ts` -->
 - **S4** — On managed control planes the control-plane parts are inferred from Leases, `/readyz` and API server metrics and badged "inferred".
-  <!-- provenance: grill row 7, 2026-11-09; enforced by: not yet enforced: model unit test (plan Phase 1) -->
+  <!-- provenance: grill row 7, 2026-11-09; enforced by: `internal/sources/controlplane_test.go` TestControlPlaneInference, `internal/sources/controlplane_test.go` TestControlPlaneManaged, `test/e2e/panel.spec.ts` -->
 - **S5** — Demo-sized clusters (≤ 20 nodes, ≤ 500 pods, ~150 bubbles) render at ≥ 30 fps; larger ones fold system namespaces and small apps into counters instead of failing.
-  <!-- provenance: grill row 12, 2026-11-09; enforced by: not yet enforced: Playwright perf probe (plan Phase 2) -->
+  <!-- provenance: grill row 12, 2026-11-09; enforced by: `internal/model/fold_test.go` TestFoldingBeyondS5Limits, `test/e2e/folding.spec.ts`, `test/e2e/perf.spec.ts` -->
 - **S6** — The repository ships `examples/` manifests and a short script for each demo: Deployment + scale, node scale-up, HPA/VPA under load, traffic with a NetworkPolicy.
-  <!-- provenance: grill N5, N10, 2026-11-09; enforced by: not yet enforced: server dry-run on kind (plan Phase 4) -->
+  <!-- provenance: grill N5, N10, 2026-11-09; enforced by: `examples/README.md`, `test/e2e/live.spec.ts` -->
 - **S7** — The same binary runs locally against a kubeconfig with no install.
   <!-- provenance: grill N7, 2026-11-09; enforced by: DEPLOY-local -->
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 // the page during a demo.
 const MAX_TEXT = 256 * 1024
 
-export type Remote = { state: 'idle' | 'loading' | 'ok' | 'error'; text: string }
+export type Remote = { state: 'idle' | 'loading' | 'ok' | 'error'; status?: number; text: string }
 
 // useText fetches a same-origin text endpoint (/api/objects, /api/logs) and re-fetches when
 // url or nonce changes; a newer request aborts the older one. The body is only ever shown as
@@ -22,7 +22,7 @@ export function useText(url: string | null, nonce = 0): Remote {
       .then(async (r) => {
         const body = await r.text()
         const text = body.length > MAX_TEXT ? `${body.slice(0, MAX_TEXT)}\n… (truncated)` : body
-        setRes(r.ok ? { state: 'ok', text } : { state: 'error', text: `${r.status} ${text.trim()}` })
+        setRes(r.ok ? { state: 'ok', status: r.status, text } : { state: 'error', status: r.status, text: `${r.status} ${text.trim()}` })
       })
       .catch((err: unknown) => {
         if (!ctl.signal.aborted) setRes({ state: 'error', text: err instanceof Error ? err.message : String(err) })

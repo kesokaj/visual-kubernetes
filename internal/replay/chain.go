@@ -7,8 +7,8 @@
 // started and ready, and the EndpointSlices that list those pods updated.
 //
 // Builder holds no client and starts no goroutine. It is not safe for concurrent use; the
-// caller feeds it from one goroutine. Today only test/fixturegen does (the recorded streams);
-// the live watch pump in cmd/visual-kubernetes does not call it yet (plan D48).
+// caller feeds it from one goroutine, as newChainSink in cmd/visual-kubernetes/serve.go and
+// test/fixturegen do.
 package replay
 
 import (

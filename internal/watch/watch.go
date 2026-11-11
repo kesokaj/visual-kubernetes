@@ -112,17 +112,18 @@ func (w *Watcher) skip(gvr schema.GroupVersionResource, reason string) {
 	w.log.Warn("kind skipped", "resource", gvr.String(), "reason", reason)
 }
 
-// handler queues every add, delete and real update an informer delivers; relist updates that
-// carry an unchanged object are dropped (sameVersion).
-func (w *Watcher) handler() cache.ResourceEventHandlerFuncs {
-	return cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) { w.enqueue(obj, false) },
+// handler queues every add, delete and real update an informer delivers, tagging items from
+// the initial list via ResourceEventHandlerDetailedFuncs; relist updates that carry an
+// unchanged object are dropped (sameVersion).
+func (w *Watcher) handler() cache.ResourceEventHandlerDetailedFuncs {
+	return cache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) { w.enqueueChange(obj, false, isInInitialList) },
 		UpdateFunc: func(old, obj any) {
 			if !sameVersion(old, obj) {
-				w.enqueue(obj, false)
+				w.enqueueChange(obj, false, false)
 			}
 		},
-		DeleteFunc: func(obj any) { w.enqueue(obj, true) },
+		DeleteFunc: func(obj any) { w.enqueueChange(obj, true, false) },
 	}
 }
 
@@ -190,6 +191,10 @@ func (w *Watcher) Skipped() []Skip {
 }
 
 func (w *Watcher) enqueue(obj any, deleted bool) {
+	w.enqueueChange(obj, deleted, false)
+}
+
+func (w *Watcher) enqueueChange(obj any, deleted, initialList bool) {
 	if tomb, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 		obj = tomb.Obj
 	}
@@ -197,7 +202,7 @@ func (w *Watcher) enqueue(obj any, deleted bool) {
 	if !ok {
 		return
 	}
-	w.q.push(model.Change{Obj: typed(u), Deleted: deleted})
+	w.q.push(model.Change{Obj: typed(u), Deleted: deleted, InitialList: initialList})
 }
 
 // typed converts to client-go's typed object when the kind is built in, so the model can

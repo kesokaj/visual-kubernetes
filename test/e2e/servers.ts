@@ -5,6 +5,12 @@
 // (deploy-scale again, for its Kubernetes Events) only by panel.spec.ts, deployScaleReplay
 // (deploy-scale again, for its causal chain) only by replay.spec.ts, and g3Scale (one G3-sized
 // snapshot) by perf.spec.ts. telemetry and traffic repeat their events for the whole run.
+export type ServerSpec = {
+  readonly port: number
+  readonly fixture: string
+  readonly args?: string
+}
+
 export const SERVERS = {
   deployScale: { port: 18080, fixture: 'test/fixtures/streams/deploy-scale.ndjson' },
   nodeJoin: { port: 18081, fixture: 'test/fixtures/streams/node-join.ndjson' },
@@ -15,7 +21,8 @@ export const SERVERS = {
   deployScaleReplay: { port: 18086, fixture: 'test/fixtures/streams/deploy-scale.ndjson' },
   g3Scale: { port: 18087, fixture: 'test/fixtures/streams/g3-scale.ndjson' },
   traffic: { port: 18088, fixture: '.agents/scratch/e2e/traffic.ndjson' },
-} as const
+  logsOff: { port: 18089, fixture: 'test/fixtures/streams/deploy-scale.ndjson', args: '--logs=false' },
+} as const satisfies Record<string, ServerSpec>
 
 export type ServerName = keyof typeof SERVERS
 

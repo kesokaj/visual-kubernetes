@@ -200,3 +200,29 @@ test.describe('replayed Events', () => {
     expect(await smallText(page)).toEqual([])
   })
 })
+
+test.describe('logs disabled (--logs=false)', () => {
+  test.use({ baseURL: urlOf('logsOff') })
+
+  test('/api/logs answers 403 and the Logs section says logs are off on this install', async ({ page }) => {
+    const logStatuses: number[] = []
+    page.on('response', (res) => {
+      if (res.url().includes('/api/logs?')) logStatuses.push(res.status())
+    })
+    await page.goto('/')
+    await expect(web(page).locator(`[data-layer="bodies"] > g[data-id="${WEB}"]`)).toHaveCount(1)
+    await clickBody(page, WEB)
+    const p = panel(page)
+    const logs = p.locator('[data-section="logs"]')
+    await expect(logs.locator('[data-logs="off"]')).toContainText('logs are off on this install')
+    await expect(logs.locator('pre.logs')).toHaveCount(0)
+    await expect(logs.locator('.err')).toHaveCount(0)
+    expect(logStatuses).toContain(403)
+
+    await p.locator('button.chip[data-pod="core/Pod/shop/web-7d4b9c-x001"]').click()
+    await expect(p).toHaveAttribute('data-panel-role', 'pod')
+    await expect(logs.locator('[data-logs="off"]')).toContainText('logs are off on this install')
+    await expect(p.locator('[data-section="config"] pre.yaml')).toContainText('name: web-7d4b9c-x001')
+    expect(await smallText(page)).toEqual([])
+  })
+})

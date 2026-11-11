@@ -203,6 +203,48 @@ func TestLogsUpstreamErrors(t *testing.T) {
 	}
 }
 
+func TestLogsDisabledAnswers403(t *testing.T) {
+	called := false
+	logs := &fakeLogs{}
+	h := (&Server{
+		Hub:          NewHub(HubOptions{}),
+		Objects:      fakeObjects{id: "core/Pod/ns/a"},
+		Logs:         logSourceFunc(func(ctx context.Context, pod model.Ref, container string, tail int64) (io.ReadCloser, error) {
+			called = true
+			return logs.Logs(ctx, pod, container, tail)
+		}),
+		LogsDisabled: true,
+	}).Handler()
+
+	for _, target := range []string{
+		"/api/logs?id=core/Pod/ns/a",
+		"/api/logs",
+	} {
+		rec := get(t, h, target)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("GET %s = %d, want 403", target, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "logs are off on this install") {
+			t.Errorf("GET %s body = %q, want logs-off note", target, rec.Body.String())
+		}
+		if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("GET %s: missing nosniff", target)
+		}
+	}
+	if called {
+		t.Error("LogSource called while LogsDisabled is true")
+	}
+	if rec := get(t, h, "/api/objects?id=core/Pod/ns/a"); rec.Code != http.StatusOK {
+		t.Errorf("GET /api/objects with LogsDisabled = %d, want 200", rec.Code)
+	}
+}
+
+type logSourceFunc func(context.Context, model.Ref, string, int64) (io.ReadCloser, error)
+
+func (f logSourceFunc) Logs(ctx context.Context, pod model.Ref, container string, tail int64) (io.ReadCloser, error) {
+	return f(ctx, pod, container, tail)
+}
+
 func TestHealthz(t *testing.T) {
 	ready := false
 	h := (&Server{Hub: NewHub(HubOptions{}), Ready: func() bool { return ready }}).Handler()

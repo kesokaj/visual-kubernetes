@@ -76,9 +76,12 @@ func newEdge(kind EdgeKind, from, to string) Edge {
 
 // Change is one object added, updated or deleted, as a watch delivers it. Obj is typed for the
 // kinds client-go knows and *unstructured.Unstructured otherwise; the model never mutates it.
+// InitialList is true when an informer delivers an object from its initial list rather than a
+// live watch event.
 type Change struct {
-	Obj     runtime.Object
-	Deleted bool
+	Obj         runtime.Object
+	Deleted     bool
+	InitialList bool
 }
 
 // DeltaOp is what a Delta does to the view.

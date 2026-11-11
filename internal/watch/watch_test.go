@@ -197,6 +197,12 @@ func TestWatcherNeverReadsSecrets(t *testing.T) {
 
 func TestWatcherDeliversLiveChanges(t *testing.T) {
 	h := start(t, fixtures()...)
+	if c, ok := h.rec.find(func(c model.Change) bool {
+		p, ok := c.Obj.(*corev1.Pod)
+		return ok && p.Name == "web-1"
+	}); !ok || !c.InitialList {
+		t.Fatalf("initial-list pod web-1 = %+v (found=%v), want InitialList=true", c, ok)
+	}
 	<-h.podWatch
 	pod := modeltest.Pod("shop", "web-2", modeltest.Labels("app", "web"), nil)
 	u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
@@ -217,10 +223,16 @@ func TestWatcherDeliversLiveChanges(t *testing.T) {
 		}
 	}
 	waitFor(t, "added pod", func() bool { _, ok := h.rec.find(isWeb2(false)); return ok })
+	if c, _ := h.rec.find(isWeb2(false)); c.InitialList {
+		t.Errorf("live-added pod web-2 got InitialList=true, want false")
+	}
 	if err := h.dyn.Resource(podsGVR).Namespace("shop").Delete(ctx, "web-2", metav1.DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "deleted pod", func() bool { _, ok := h.rec.find(isWeb2(true)); return ok })
+	if c, _ := h.rec.find(isWeb2(true)); c.InitialList {
+		t.Errorf("live-deleted pod web-2 got InitialList=true, want false")
+	}
 	waitFor(t, "idle queue", h.w.Synced)
 }
 

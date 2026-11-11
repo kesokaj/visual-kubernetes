@@ -23,22 +23,32 @@ export function ConfigSection({ res, objectId }: { res: Remote; objectId: string
 }
 
 // LogsSection tails a pod's logs. Logs are the application's own output and can carry
-// secrets; the README says so, and nothing here stores or forwards them.
+// secrets; the README says so, and nothing here stores or forwards them. Under --logs=false
+// (D38, install-lb.yaml) /api/logs answers 403 and this section notes that logs are off.
 export function LogsSection({ podId }: { podId: string | undefined }) {
   const [nonce, setNonce] = useState(0)
   const res = useText(logsUrl(podId), nonce)
+  const disabled = res.state === 'error' && res.status === 403 && res.text.includes('logs are off on this install')
   return (
     <Section title={podId ? `Logs · ${podId.split('/').pop() ?? ''}` : 'Logs'} name="logs">
-      <div className="p-row">
-        <span className="muted">Last 200 lines; logs can contain secrets.</span>
-        {podId && (
-          <button type="button" className="p-btn" onClick={() => setNonce((n) => n + 1)}>
-            Refresh
-          </button>
-        )}
-      </div>
-      <Body res={res} empty="No pod to read logs from." />
-      {res.state === 'ok' && <pre className="logs">{res.text || '(no output)'}</pre>}
+      {disabled ? (
+        <p className="muted" data-logs="off">
+          Pod logs are off on this install.
+        </p>
+      ) : (
+        <>
+          <div className="p-row">
+            <span className="muted">Last 200 lines; logs can contain secrets.</span>
+            {podId && (
+              <button type="button" className="p-btn" onClick={() => setNonce((n) => n + 1)}>
+                Refresh
+              </button>
+            )}
+          </div>
+          <Body res={res} empty="No pod to read logs from." />
+          {res.state === 'ok' && <pre className="logs">{res.text || '(no output)'}</pre>}
+        </>
+      )}
     </Section>
   )
 }

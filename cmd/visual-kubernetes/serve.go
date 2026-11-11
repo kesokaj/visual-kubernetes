@@ -21,6 +21,7 @@ import (
 	"github.com/kesokaj/visual-kubernetes/internal/hubble"
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
+	"github.com/kesokaj/visual-kubernetes/internal/replay"
 	"github.com/kesokaj/visual-kubernetes/internal/sources"
 	"github.com/kesokaj/visual-kubernetes/internal/stream"
 	"github.com/kesokaj/visual-kubernetes/internal/watch"
@@ -28,7 +29,8 @@ import (
 
 // Listen addresses (D26). Outside a cluster the server holds the operator's credentials, so it
 // listens on loopback unless --addr says otherwise; in the cluster it listens on every
-// interface behind its ClusterIP Service and port-forward (R7).
+// interface behind its ClusterIP Service (port-forward) or the opt-in source-range-limited
+// LoadBalancer Service in install-lb.yaml (R7, ADR-008).
 const (
 	localAddr     = "127.0.0.1:8080"
 	inClusterAddr = ":8080"
@@ -42,6 +44,7 @@ type serveOptions struct {
 	kubeconfig string
 	addr       string
 	replay     string
+	logs       bool
 }
 
 // app is a built server: its handler, whether it runs in the cluster (for the default
@@ -56,9 +59,9 @@ func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
 	var a app
 	var err error
 	if o.replay != "" {
-		a, err = startReplay(ctx, o.replay, log)
+		a, err = startReplay(ctx, o.replay, o.logs, log)
 	} else {
-		a, err = startLive(ctx, o.kubeconfig, log)
+		a, err = startLive(ctx, o.kubeconfig, o.logs, log)
 	}
 	if err != nil {
 		return err
@@ -70,7 +73,7 @@ func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
 		return fmt.Errorf("listening on %s: %w", addr, err)
 	}
 	page := distFS()
-	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil)
+	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil, "logs", o.logs)
 	return serveHTTP(ctx, ln, stream.HostGuard(withPage(a.handler, page), o.addr))
 }
 
@@ -115,7 +118,7 @@ func serveHTTP(ctx context.Context, ln net.Listener, h http.Handler) error {
 }
 
 // startReplay loads the recording and plays it into a hub; no cluster is contacted (D14).
-func startReplay(ctx context.Context, path string, log *slog.Logger) (app, error) {
+func startReplay(ctx context.Context, path string, logs bool, log *slog.Logger) (app, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return app{}, fmt.Errorf("opening recording: %w", err)
@@ -131,16 +134,20 @@ func startReplay(ctx context.Context, path string, log *slog.Logger) (app, error
 			log.Error("replay failed", "error", err.Error())
 		}
 	}()
+	var logsSrc stream.LogSource
+	if logs {
+		logsSrc = stream.ReplayLogs{Hub: hub}
+	}
 	srv := &stream.Server{Hub: hub, Ready: func() bool { return true },
-		Objects: stream.ReplayObjects{Hub: hub}, Logs: stream.ReplayLogs{Hub: hub}, Log: log}
+		Objects: stream.ReplayObjects{Hub: hub}, Logs: logsSrc, LogsDisabled: !logs, Log: log}
 	return app{handler: srv.Handler()}, nil
 }
 
-// startLive probes the sources, starts the watches into the model and the model's deltas and
-// Kubernetes Events into the hub, starts the metrics collector, and returns the handler. Only a
-// config or discovery failure is an error; every other source degrades to its capability state
-// (R4).
-func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, error) {
+// startLive probes the sources, starts the watches into the model and the model's deltas,
+// Kubernetes Events and causal chains into the hub, starts the metrics and Hubble collectors,
+// and returns the handler. Only a config or discovery failure is an error; every other source
+// degrades to its capability state (R4).
+func startLive(ctx context.Context, kubeconfig string, logs bool, log *slog.Logger) (app, error) {
 	cl, err := newClients(kubeconfig, log)
 	if err != nil {
 		return app{}, err
@@ -154,11 +161,7 @@ func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, e
 	if err := hub.Publish(m.SnapshotEvent(caps)); err != nil {
 		return app{}, err
 	}
-	w := watch.New(cs.Discovery(), cl.watchDyn, func(batch []model.Change) {
-		if err := hub.Publish(m.ApplyEvents(batch...)...); err != nil {
-			log.Error("publishing model deltas failed", "error", err.Error())
-		}
-	}, log)
+	w := watch.New(cs.Discovery(), cl.watchDyn, newChainSink(m, replay.New(), time.Now, hub, log), log)
 	if err := w.Start(ctx); err != nil {
 		return app{}, fmt.Errorf("starting watches: %w", err)
 	}
@@ -172,12 +175,49 @@ func startLive(ctx context.Context, kubeconfig string, log *slog.Logger) (app, e
 	go col.Run(ctx, sources.DefaultInterval)
 	startHubble(ctx, inCluster, cs, m, hub, w.Synced, log)
 
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(cs.Discovery()))
-	srv := &stream.Server{Hub: hub, Ready: w.Synced, Log: log,
-		Objects: stream.ClusterObjects{Model: m, Dyn: cl.dyn, Mapper: mapper},
-		Logs:    stream.ClusterLogs{Model: m, Client: cs}}
-	log.Info("watching", "host", cfg.Host, "inCluster", inCluster)
+	srv := newLiveServer(hub, w.Synced, m, cl, logs, log)
+	log.Info("watching", "host", cfg.Host, "inCluster", inCluster, "logs", logs)
 	return app{handler: srv.Handler(), inCluster: inCluster}, nil
+}
+
+// newChainSink builds the single-goroutine watch sink: initial-list items prime the causal-chain
+// builder without emitting chains; live watch items append causal-chain events in arrival order.
+func newChainSink(m *model.Model, chains *replay.Builder, now func() time.Time, hub *stream.Hub, log *slog.Logger) watch.Sink {
+	return func(batch []model.Change) {
+		evs := m.ApplyEvents(batch...)
+		for len(batch) > 0 {
+			init := batch[0].InitialList
+			n := 1
+			for n < len(batch) && batch[n].InitialList == init {
+				n++
+			}
+			if init {
+				chains.Prime(batch[:n]...)
+			} else {
+				evs = append(evs, chains.Observe(now(), batch[:n]...)...)
+			}
+			batch = batch[n:]
+		}
+		if err := hub.Publish(evs...); err != nil {
+			log.Error("publishing model deltas failed", "error", err.Error())
+		}
+	}
+}
+
+func newLiveServer(hub *stream.Hub, ready func() bool, m *model.Model, cl clients, logs bool, log *slog.Logger) *stream.Server {
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(cl.cs.Discovery()))
+	var logsSrc stream.LogSource
+	if logs {
+		logsSrc = stream.ClusterLogs{Model: m, Client: cl.cs}
+	}
+	return &stream.Server{
+		Hub:          hub,
+		Ready:        ready,
+		Log:          log,
+		Objects:      stream.ClusterObjects{Model: m, Dyn: cl.dyn, Mapper: mapper},
+		Logs:         logsSrc,
+		LogsDisabled: !logs,
+	}
 }
 
 // startHubble streams traffic flows only in-cluster: outside a cluster the binary holds the

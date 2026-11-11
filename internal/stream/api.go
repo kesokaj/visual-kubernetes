@@ -18,6 +18,8 @@ const (
 	MaxTailLines     = 1000
 	// MaxLogBytes caps one logs response, whatever the line count.
 	MaxLogBytes = 1 << 20
+	// LogsDisabledMessage is the 403 body when --logs=false (plan D38).
+	LogsDisabledMessage = "logs are off on this install"
 )
 
 // ErrNotFound is what an ObjectSource or LogSource returns for an id that is not in the view
@@ -47,11 +49,12 @@ func (e *StatusError) Error() string { return e.Msg }
 
 // Server wires the hub and the sources to HTTP.
 type Server struct {
-	Hub     *Hub
-	Ready   func() bool // the /healthz condition
-	Objects ObjectSource
-	Logs    LogSource
-	Log     *slog.Logger
+	Hub          *Hub
+	Ready        func() bool // the /healthz condition
+	Objects      ObjectSource
+	Logs         LogSource
+	LogsDisabled bool // --logs=false: /api/logs answers 403 (D38, ADR-008)
+	Log          *slog.Logger
 	// Heartbeat is the idle-stream comment interval; DefaultHeartbeat when zero.
 	Heartbeat time.Duration
 }
@@ -95,6 +98,10 @@ func (s *Server) handleObjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if s.LogsDisabled || s.Logs == nil {
+		plain(w, http.StatusForbidden, LogsDisabledMessage+"\n")
+		return
+	}
 	q := r.URL.Query()
 	ref, err := model.ParseID(q.Get("id"))
 	if err != nil || ref.Group != model.CoreGroup || ref.Kind != "Pod" {
