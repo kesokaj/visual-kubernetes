@@ -101,6 +101,8 @@ test('hover fades what does not work with the app; a click keeps it; Esc clears 
 test('zoom buttons, + / − keys and double-click zoom; Fit hands the camera back', async ({ page }) => {
   await ready(page)
   await expect(web(page)).toHaveAttribute('data-auto', 'on')
+  // The baseline must be the settled fit: mid-settle, auto-fit is still easing (verifier flake 1.042 vs 1.096).
+  await settle(page, WEB_APP)
   const start = await zoomOf(page)
 
   // R6/D2: the zoom buttons are part of the one filter pill, not a second floating pill.
