@@ -48,10 +48,14 @@ Everything on the page is driven by direct clicks, pointer pan/zoom, a compact b
 
 | Action | Effect |
 |--------|--------|
-| Click a bubble | Opens the panel for it (click a pod chip in an app's panel to open that pod) |
+| Click a bubble | Opens the panel for it (click a pod chip in an app's panel to open that pod); everything outside its neighbourhood fades until the panel closes |
+| Hover a bubble | Fades everything outside its neighbourhood (its app's pods and satellites, and the bodies it links to) while the pointer stays on it |
 | Esc, ×, or a click on empty space | Closes the panel; Esc also hides the replay caption |
-| Wheel / drag | Zoom and pan; the camera stops auto-fitting |
-| F | Fit the whole web again and resume auto-fit |
+| Drag a bubble | Moves it; the rest of the web rearranges around it (the API hub stays pinned) and auto-fit stops |
+| Wheel, pinch / drag on empty space | Zoom and pan; the camera stops auto-fitting |
+| `+` / `−` (keys or the buttons in the filter pill) | Zoom in or out around the centre |
+| Double-click | On a bubble: zoom onto it; on empty space: zoom in there |
+| F, or Fit in the filter pill | Fit the whole web again and resume auto-fit |
 | Filter pill (bottom-left) | Toggle the 8 component groups (all on), show `visual-kubernetes` itself (hidden by default), or `Highlight` / `Only show` matching `Deployment`, `StatefulSet`, `DaemonSet` and `Namespace` items |
 | V | Hide or show the filter pill |
 | R | Replay the newest causal chain received since the page opened (1 step/s) |
@@ -64,6 +68,7 @@ The panel shows, per object:
 - **Node:** its conditions read from the Node YAML (falling back to its status when there are none), Events and YAML.
 - **API server:** every data source and its probe state (`ok`, `missing`, `denied`, `unreachable`, `error`), the same list `visual-kubernetes probe` prints.
 - **Inferred control-plane part (`cp/*`):** the evidence it was inferred from and the static pods folded behind it.
+- **Internet (globe, `ext/internet`):** drawn only when the cluster has an entrypoint (an Ingress, Gateway, LoadBalancer or NodePort Service); the panel lists those entrypoints. Hubble `reserved:world` flows and Prometheus flows with an external side draw particles from or to the globe.
 
 > [!WARNING]
 > Logs are the application's own output and can contain secrets (tokens, passwords, personal data). On installs with `--logs=true` (the default in `install.yaml` and `install-kube-system.yaml`), anyone who can open the page can read the last 200 lines of any pod's logs: treat a shared screen accordingly, keep ClusterIP installs behind `kubectl port-forward`, and leave `--logs=false` enabled on `install-lb.yaml`.

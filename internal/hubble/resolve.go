@@ -66,6 +66,9 @@ func newIndex(m ModelReader) *modelIndex {
 }
 
 func (idx *modelIndex) resolve(ep *flow.Endpoint, svc *flow.Service) string {
+	if isWorld(ep) {
+		return idx.internet()
+	}
 	if ep != nil && ep.GetNamespace() != "" {
 		ns := ep.GetNamespace()
 		if pod := ep.GetPodName(); pod != "" {

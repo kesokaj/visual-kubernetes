@@ -1,4 +1,4 @@
-import { Icon, iconFor } from '../icons/sprite'
+import { Globe, Icon, iconFor } from '../icons/sprite'
 import type { Pulse } from '../lib/motion'
 import type { Entity } from '../lib/wire'
 import type { Body } from './layout'
@@ -13,17 +13,22 @@ export function posOf(bodies: Map<string, Body>, id: string): Pos | null {
 }
 
 // LinkView draws one edge: dashed control-plane links from the API server, node-coloured
-// threads from a node to the workloads it hosts, plain lines for the rest.
-export function LinkView({ link, from, to, scene }: { link: Link; from: Pos; to: Pos; scene: Scene }) {
+// threads from a node to the workloads it hosts, plain lines for the rest. faded is the
+// neighbourhood fade (neighborhood.ts), applied on top of a D54 dim.
+type LinkProps = { link: Link; from: Pos; to: Pos; scene: Scene; faded: boolean }
+
+export function LinkView({ link, from, to, scene, faded }: LinkProps) {
   const fromAnchor = scene.anchors.get(link.from)
   const toAnchor = scene.anchors.get(link.to)
   const node = link.kind === 'hosts' ? fromAnchor?.entity.name : undefined
   const color = node ? scene.nodeColor.get(node) : undefined
   const base = link.kind === 'member' ? 'cp-link' : link.kind === 'hosts' ? 'thread' : 'edge'
-  const cls = fromAnchor?.dimmed || toAnchor?.dimmed ? `${base} dimmed` : base
+  const dim = fromAnchor?.dimmed || toAnchor?.dimmed ? `${base} dimmed` : base
+  const cls = faded ? `${dim} faded` : dim
   return (
     <line
       className={cls}
+      data-faded={faded ? 'true' : undefined}
       data-edge={link.id}
       data-kind={link.kind}
       x1={from.x}
@@ -73,14 +78,47 @@ function Pod({ pod, at, color, arriving, selected }: PodProps) {
   )
 }
 
-export type Marks = { pulse: Pulse | undefined; now: number; selected: string | null; arriving: ReadonlySet<string> }
+export type Marks = {
+  pulse: Pulse | undefined
+  now: number
+  selected: string | null
+  arriving: ReadonlySet<string>
+  faded: boolean // outside the hovered or selected neighbourhood
+}
+
+// groupRadius is the faint disc that holds an app with its riders: past the pod ring when pods
+// are drawn, else past the satellite orbit; 0 when the app has no riders.
+function groupRadius(a: Anchor): number {
+  if (a.ring > 0 && a.pods.length > 0) return a.ring + SIZE.pod / 2 + 6
+  return a.sats.length > 0 ? a.satR + SIZE.sat / 2 + 6 : 0
+}
+
+// tetherPath is one path with a spoke from the app centre to each of its pods and satellites,
+// so riders read as part of their workload rather than loose dots (plan D1).
+function tetherPath(c: Pos, riders: Pos[]): string {
+  return riders.map((p) => `M${c.x.toFixed(1)} ${c.y.toFixed(1)}L${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('')
+}
+
+function Group({ a, at, sats, pods }: { a: Anchor; at: Pos; sats: Pos[]; pods: Pos[] }) {
+  const r = groupRadius(a)
+  if (r === 0) return null
+  return (
+    <>
+      <circle className="group-disc" cx={at.x} cy={at.y} r={r} />
+      <path className="tether" d={tetherPath(at, [...pods, ...sats])} data-spokes={pods.length + sats.length} />
+    </>
+  )
+}
 
 // AnchorView draws one body: its icon, and for an app its halo, pulse, satellites and pod ring.
 export function AnchorView({ a, at, scene, marks }: { a: Anchor; at: Pos; scene: Scene; marks: Marks }) {
   const sys = a.entity.filterGroup === 'system'
   const app = a.role === 'app'
   const statics = scene.statics.get(a.id)
-  const cls = a.dimmed ? 'dimmed' : !scene.focused && sys ? 'sys' : undefined
+  const base = a.dimmed ? 'dimmed' : !scene.focused && sys ? 'sys' : undefined
+  const cls = marks.faded ? [base, 'faded'].filter(Boolean).join(' ') : base
+  const sats = satPositions(a, at)
+  const pods = podPositions(a, at)
   return (
     <g
       data-id={a.id}
@@ -94,15 +132,21 @@ export function AnchorView({ a, at, scene, marks }: { a: Anchor; at: Pos; scene:
       data-statics={statics ? statics.length : undefined}
       data-selected={marks.selected === a.id ? 'true' : undefined}
       data-dimmed={a.dimmed ? 'true' : undefined}
+      data-faded={marks.faded ? 'true' : undefined}
       className={cls}
     >
+      {app && <Group a={a} at={at} sats={sats} pods={pods} />}
       {a.top > 0 && <Halo at={at} r={a.icon * 1.05} />}
       {app && a.ring > 0 && <circle className="ring" cx={at.x} cy={at.y} r={a.ring} />}
       {app && <PulseRing pulse={marks.pulse} now={marks.now} at={at} r={a.icon / 2 + 6} />}
       {marks.selected === a.id && <circle className="sel-ring" cx={at.x} cy={at.y} r={a.icon / 2 + 8} />}
-      <Icon name={iconFor(a.entity.kind, app)} size={a.icon} x={at.x} y={at.y} />
+      {a.role === 'ext' ? (
+        <Globe size={a.icon} x={at.x} y={at.y} />
+      ) : (
+        <Icon name={iconFor(a.entity.kind, app)} size={a.icon} x={at.x} y={at.y} />
+      )}
       {a.role === 'node' && <NodeDot a={a} at={at} scene={scene} />}
-      {satPositions(a, at).map((p, i) => {
+      {sats.map((p, i) => {
         const s = a.sats[i]
         return s ? (
           <g key={s.id} data-id={s.id} data-role="sat" data-kind={s.kind}>
@@ -110,7 +154,7 @@ export function AnchorView({ a, at, scene, marks }: { a: Anchor; at: Pos; scene:
           </g>
         ) : null
       })}
-      {podPositions(a, at).map((p, i) => {
+      {pods.map((p, i) => {
         const pod = a.pods[i]
         return pod ? (
           <Pod

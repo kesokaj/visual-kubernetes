@@ -7,10 +7,17 @@
 
 ## Now
 
+PLAN-2026-11-11-1703 (UI grouping, highlight, zoom, drag & internet traffic) — code done for Phases 1, 2a–2c; closing DoD:
+- [ ] Reviewer round 2 on the two fixes (one-capsule zoom, kube-apiserver exclusion)
+- [ ] Verifier testing record (go test -race, Playwright incl. perf, live.sh, fyr check)
+- [ ] Tick the plan record's boxes
+
 ## Next
 
 ## Backlog
 
+- Globe drawn when its only entrypoint targets are hidden outside focus mode (e.g. `install-lb.yaml` self app); prune like focus mode (added 2026-11-11, review DoD finding 3).
+- `interact.spec.ts:101` zoom test failed once in a full run, passed alone and on rerun; watch for flake (added 2026-11-11, CHANGE-2026-11-11-1736).
 - Size-metric switch (PRD C3; added 2026-11-09, plan D11).
 - CRD kinds outside the named RBAC groups (added 2026-11-09, plan D16).
 - OTLP receiver as a traffic source (added 2026-11-09, grill N4/row 6).

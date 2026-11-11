@@ -34,6 +34,27 @@ type Props = {
   graph: Graph
   filter: FilterState
   onChange: (next: FilterState) => void
+  zoom?: ZoomButtons
+}
+
+// ZoomButtons are the presenter's camera actions; the same ones answer +, − and F.
+export type ZoomButtons = { in: () => void; out: () => void; fit: () => void }
+
+// ZoomRow is the end of the pill itself (one capsule, R6/D2): zoom out, fit everything (auto-follow back on), zoom in.
+function ZoomRow({ zoom }: { zoom: ZoomButtons }) {
+  return (
+    <div className="f-zoom" role="group" aria-label="Zoom">
+      <button type="button" aria-label="Zoom out" title="Zoom out (−)" onClick={zoom.out}>
+        −
+      </button>
+      <button type="button" aria-label="Fit" title="Fit everything (F)" onClick={zoom.fit}>
+        Fit
+      </button>
+      <button type="button" aria-label="Zoom in" title="Zoom in (+)" onClick={zoom.in}>
+        +
+      </button>
+    </div>
+  )
 }
 
 function SwitchRow({
@@ -175,8 +196,9 @@ function FocusControls({
 }
 
 // FilterPill is the only chrome on the page: a compact pill bottom-left that opens component
-// switches (all on by default), self-visibility (off by default), and workload/namespace focus.
-export function FilterPill({ graph, filter, onChange }: Props) {
+// switches (all on by default), self-visibility (off by default), and workload/namespace focus,
+// with the zoom buttons beside it.
+export function FilterPill({ graph, filter, onChange, zoom }: Props) {
   const [open, setOpen] = useState(false)
   const version = useSyncExternalStore(graph.subscribe, graph.getVersion, graph.getVersion)
   const namespaces = useMemo(
@@ -218,12 +240,15 @@ export function FilterPill({ graph, filter, onChange }: Props) {
           </div>
         </div>
       )}
-      <button type="button" className="f-pill" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 5h18l-7 8v6l-4-2v-4z" />
-        </svg>
-        <span>{pillLabel(filter, GROUPS.length)}</span>
-      </button>
+      <div className="f-bar">
+        <button type="button" className="f-pill" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5h18l-7 8v6l-4-2v-4z" />
+          </svg>
+          <span>{pillLabel(filter, GROUPS.length)}</span>
+        </button>
+        {zoom && <ZoomRow zoom={zoom} />}
+      </div>
     </div>
   )
 }

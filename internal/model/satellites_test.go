@@ -115,7 +115,13 @@ func TestIngressRoutesToAppOrService(t *testing.T) {
 	if e := mustEntity(t, m, "networking.k8s.io/Ingress/shop/web"); e.AppID != "app/shop/Deployment/front" || e.FilterGroup != model.Ingress {
 		t.Errorf("web ingress = %+v, want satellite of app/shop/Deployment/front in ingress", e)
 	}
-	want := []string{"routes:networking.k8s.io/Ingress/shop/api->core/Service/shop/be"}
+	// Every Ingress is an entrypoint, so ext/internet routes to the app or the Ingress itself.
+	want := []string{
+		"routes:ext/internet->app/shop/Deployment/front",
+		"routes:ext/internet->networking.k8s.io/Ingress/shop/api",
+		"routes:ext/internet->networking.k8s.io/Ingress/shop/dangling",
+		"routes:networking.k8s.io/Ingress/shop/api->core/Service/shop/be",
+	}
 	if got := edgeIDs(m, model.EdgeRoutes); !slices.Equal(got, want) {
 		t.Errorf("routes = %v, want %v", got, want)
 	}

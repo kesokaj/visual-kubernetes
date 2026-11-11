@@ -7,6 +7,7 @@ import { Graph, connect } from '../lib/graph'
 import { parseEvent } from '../lib/wire'
 import { Panel } from '../panel/Panel'
 import { useReplay } from '../replay/useReplay'
+import type { WebControls } from '../web/useWeb'
 import { Web } from '../web/Web'
 
 export const Route = createFileRoute('/')({ component: Page, ssr: false })
@@ -19,16 +20,37 @@ function typing(t: EventTarget | null): boolean {
   return t instanceof HTMLInputElement && t.type !== 'checkbox' && t.type !== 'radio'
 }
 
-// Keys are the presenter's actions; there are no buttons for them (plan D7).
-type Keys = { fit: () => void; pill: () => void; escape: () => void; replay: () => void; pause: () => void; step: () => void }
+// Keys are the presenter's actions; only fit and zoom also have buttons, in the filter pill.
+type Keys = {
+  fit: () => void
+  pill: () => void
+  escape: () => void
+  replay: () => void
+  pause: () => void
+  step: () => void
+  zoomIn: () => void
+  zoomOut: () => void
+}
 
 // keyAction maps a key to its action: F re-fits the camera, V shows or hides the filter pill,
-// R replays the last causal chain, Space pauses or resumes it, → shows its next step.
+// R replays the last causal chain, Space pauses or resumes it, → shows its next step, + and −
+// zoom around the screen centre.
 function keyAction(ev: KeyboardEvent, keys: Keys): (() => void) | undefined {
   if (ev.key === ' ') return keys.pause
   if (ev.key === 'ArrowRight') return keys.step
-  return { f: keys.fit, v: keys.pill, r: keys.replay }[ev.key.toLowerCase()]
+  const map: Record<string, () => void> = {
+    f: keys.fit,
+    v: keys.pill,
+    r: keys.replay,
+    '+': keys.zoomIn,
+    '=': keys.zoomIn,
+    '-': keys.zoomOut,
+    _: keys.zoomOut,
+  }
+  return map[ev.key.toLowerCase()]
 }
+
+const ZOOM_STEP = 1.4 // one zoom button press or + / − key
 
 // Esc closes the panel and hides the replay caption. Space is taken from the page (it would
 // otherwise flip a focused filter switch or scroll).
@@ -68,6 +90,12 @@ function Page() {
   useEffect(() => connect(graph, parseEvent), [graph])
   const [fitAgain] = useState(() => () => setFitNonce((n) => n + 1))
   const [close] = useState(() => () => setSelected(null))
+  const controls = useRef<WebControls | null>(null)
+  const [zoom] = useState(() => ({
+    in: () => controls.current?.zoomBy(ZOOM_STEP),
+    out: () => controls.current?.zoomBy(1 / ZOOM_STEP),
+    fit: fitAgain,
+  }))
   useKeys({
     fit: fitAgain,
     pill: () => setPill((p) => !p),
@@ -78,6 +106,8 @@ function Page() {
     replay: () => player.replay(),
     pause: () => player.togglePause(),
     step: () => player.step(),
+    zoomIn: zoom.in,
+    zoomOut: zoom.out,
   })
 
   const changeFilter = (next: FilterState) => {
@@ -88,8 +118,16 @@ function Page() {
   return (
     <main className="vk">
       <Sprite />
-      <Web graph={graph} filter={filter} fitNonce={fitNonce} selected={selected} onSelect={setSelected} play={play} />
-      {pill && <FilterPill graph={graph} filter={filter} onChange={changeFilter} />}
+      <Web
+        graph={graph}
+        filter={filter}
+        fitNonce={fitNonce}
+        selected={selected}
+        onSelect={setSelected}
+        play={play}
+        controlsRef={controls}
+      />
+      {pill && <FilterPill graph={graph} filter={filter} onChange={changeFilter} zoom={zoom} />}
       {selected && <Panel key={selected} graph={graph} id={selected} onClose={close} onSelect={setSelected} />}
     </main>
   )

@@ -25,6 +25,9 @@ const LINK = {
   parent: { distance: 210, strength: 0.32 },
 } as const
 
+const HUB = 'cp/apiserver'
+const DRAG_HEAT = 0.28 // alphaTarget while a body is dragged: enough to reflow, calm enough to follow
+
 // Layout owns one d3-force simulation of the anchors. update() keeps every surviving body's
 // position and velocity, so the web reshapes instead of jumping when the cluster changes.
 export class Layout {
@@ -69,7 +72,7 @@ export class Layout {
     this.linkKey = linkKey
     this.bodies.clear()
     for (const [id, b] of next) this.bodies.set(id, b)
-    const hub = this.bodies.get('cp/apiserver')
+    const hub = this.bodies.get(HUB)
     if (hub) {
       hub.fx = 0 // the hub pins the web's centre so it never drifts off screen
       hub.fy = 0
@@ -80,6 +83,28 @@ export class Layout {
     // 5 s does not keep the layout boiling. A status-only or highlight-only change moves nothing.
     if (grown) this.sim.alpha(Math.max(this.sim.alpha(), 0.55)).restart()
     else if (resized) this.sim.alpha(Math.max(this.sim.alpha(), 0.12)).restart()
+  }
+
+  // drag pins a body under the pointer and keeps the web warm so its neighbours rearrange
+  // live around it (plan D7). The hub stays pinned at the centre and is never dragged.
+  drag(id: string, x: number, y: number): void {
+    const b = this.bodies.get(id)
+    if (!b || id === HUB) return
+    b.fx = x
+    b.fy = y
+    b.x = x
+    b.y = y
+    this.sim.alphaTarget(DRAG_HEAT).restart()
+  }
+
+  // release lets a dragged body go back to the forces and lets the web cool down.
+  release(id: string): void {
+    const b = this.bodies.get(id)
+    if (b && id !== HUB) {
+      b.fx = null
+      b.fy = null
+    }
+    this.sim.alphaTarget(0)
   }
 
   stop(): void {

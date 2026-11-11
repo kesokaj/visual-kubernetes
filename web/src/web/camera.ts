@@ -6,7 +6,7 @@ export type Camera = { x: number; y: number; k: number; auto: boolean }
 export type Box = { minX: number; minY: number; maxX: number; maxY: number }
 
 export const ZOOM_MIN = 0.25
-export const ZOOM_MAX = 4
+export const ZOOM_MAX = 6
 const FIT_PAD = 48 // screen pixels kept clear around the fit
 const FIT_MAX = 1.35 // a tiny or filtered cluster stays airy instead of blowing up huge
 const LABEL_ROOM = 58 // labels sit under bodies, outside their radius
@@ -60,6 +60,23 @@ export function zoomAt(cam: Camera, factor: number, sx: number, sy: number): Cam
   const wx = (sx - cam.x) / cam.k
   const wy = (sy - cam.y) / cam.k
   return { x: sx - wx * k, y: sy - wy * k, k, auto: false }
+}
+
+// zoomTo centres the world point (wx, wy) on a w×h screen at zoom k (clamped).
+export function zoomTo(wx: number, wy: number, k: number, w: number, h: number): Camera {
+  const kk = clamp(k, ZOOM_MIN, ZOOM_MAX)
+  return { x: w / 2 - wx * kk, y: h / 2 - wy * kk, k: kk, auto: false }
+}
+
+// glide is ease for a presenter-chosen target (a zoom button, key or double-click): it moves
+// the same way but leaves auto-fit off.
+export function glide(cam: Camera, target: Camera, t: number): Camera {
+  return { ...ease(cam, target, t), auto: false }
+}
+
+// toWorld maps a screen point to world units.
+export function toWorld(cam: Camera, sx: number, sy: number): { x: number; y: number } {
+  return { x: (sx - cam.x) / cam.k, y: (sy - cam.y) / cam.k }
 }
 
 export function pan(cam: Camera, dx: number, dy: number): Camera {

@@ -90,6 +90,7 @@ func derive(objs map[string]runtime.Object) view {
 	b.addApps()
 	b.addCounters()
 	b.fold()
+	b.addInternet()
 	return b.v
 }
 

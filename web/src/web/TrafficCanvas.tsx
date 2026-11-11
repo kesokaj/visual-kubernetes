@@ -3,6 +3,7 @@ import { curvePoint, DROP_AT, DROP_MS, flowCurve } from '../lib/flows'
 import type { Graph } from '../lib/graph'
 import type { Camera } from './camera'
 import type { Body } from './layout'
+import { fadedBy, resolveAnchorId } from './neighborhood'
 import { posOf, type Pos } from './parts'
 import type { Scene } from './scene'
 import { useTrafficCanvas } from './useTrafficCanvas'
@@ -14,36 +15,34 @@ type Props = {
   camRef: RefObject<Camera>
   size: { w: number; h: number }
   visible: boolean
+  hl: ReadonlySet<string> | null // neighbourhood fade: endpoints outside it draw like dimmed ones
 }
 
-function resolveAnchorId(id: string, scene: Scene, graph: Graph): string | null {
-  if (scene.anchors.has(id)) return id
-  const appId = graph.entities.get(id)?.appId
-  return appId && scene.anchors.has(appId) ? appId : null
-}
+// View is what every draw pass reads: the graph, the scene, the body positions and the
+// neighbourhood fade.
+type View = { graph: Graph; scene: Scene; bodies: Map<string, Body>; hl: ReadonlySet<string> | null }
 
-function endpointOf(
-  id: string,
-  scene: Scene,
-  graph: Graph,
-  bodies: Map<string, Body>,
-): { pos: Pos; sys: boolean; dimmed: boolean } | null {
-  const aid = resolveAnchorId(id, scene, graph)
+function endpointOf(id: string, v: View): { pos: Pos; sys: boolean; dimmed: boolean } | null {
+  const aid = resolveAnchorId(id, v.scene, v.graph)
   if (!aid) return null
-  const pos = posOf(bodies, aid)
-  const anchor = scene.anchors.get(aid)
+  const pos = posOf(v.bodies, aid)
+  const anchor = v.scene.anchors.get(aid)
   return pos && anchor
-    ? { pos, sys: !scene.focused && anchor.entity.filterGroup === 'system', dimmed: anchor.dimmed }
+    ? {
+        pos,
+        sys: !v.scene.focused && anchor.entity.filterGroup === 'system',
+        dimmed: anchor.dimmed || fadedBy(v.hl, aid),
+      }
     : null
 }
 
-function drawEdges(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bodies: Map<string, Body>) {
+function drawEdges(ctx: CanvasRenderingContext2D, v: View) {
   let flows = 0
   let drops = 0
   ctx.lineWidth = 1.4
-  for (const e of graph.flows.edges.values()) {
-    const from = endpointOf(e.src, scene, graph, bodies)
-    const to = endpointOf(e.dst, scene, graph, bodies)
+  for (const e of v.graph.flows.edges.values()) {
+    const from = endpointOf(e.src, v)
+    const to = endpointOf(e.dst, v)
     if (!from || !to) continue
     flows += 1
     if (e.verdict === 'DROPPED') drops += 1
@@ -61,10 +60,10 @@ function drawEdges(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bo
   return { flows, drops }
 }
 
-function drawParticles(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bodies: Map<string, Body>) {
-  for (const p of graph.flows.particles) {
-    const from = endpointOf(p.src, scene, graph, bodies)
-    const to = endpointOf(p.dst, scene, graph, bodies)
+function drawParticles(ctx: CanvasRenderingContext2D, v: View) {
+  for (const p of v.graph.flows.particles) {
+    const from = endpointOf(p.src, v)
+    const to = endpointOf(p.dst, v)
     if (!from || !to) continue
     const pt = curvePoint(flowCurve(from.pos, to.pos), p.t)
     ctx.globalAlpha = from.dimmed || to.dimmed ? 0.14 : from.sys ? 0.4 : 0.95
@@ -75,13 +74,13 @@ function drawParticles(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene
   }
 }
 
-function drawDrops(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bodies: Map<string, Body>, now: number) {
+function drawDrops(ctx: CanvasRenderingContext2D, v: View, now: number) {
   const s = 6
   ctx.strokeStyle = '#dc2626'
   ctx.lineWidth = 2.4
-  for (const d of graph.flows.drops) {
-    const from = endpointOf(d.src, scene, graph, bodies)
-    const to = endpointOf(d.dst, scene, graph, bodies)
+  for (const d of v.graph.flows.drops) {
+    const from = endpointOf(d.src, v)
+    const to = endpointOf(d.dst, v)
     if (!from || !to) continue
     const pt = curvePoint(flowCurve(from.pos, to.pos), DROP_AT)
     const fade = Math.max(0, 1 - (now - d.at) / DROP_MS)
@@ -97,6 +96,7 @@ function drawDrops(ctx: CanvasRenderingContext2D, graph: Graph, scene: Scene, bo
 
 function paintFrame(
   graph: Graph,
+  hl: ReadonlySet<string> | null,
   ctx: CanvasRenderingContext2D,
   cv: HTMLCanvasElement,
   sc: Scene,
@@ -105,13 +105,14 @@ function paintFrame(
   dpr: number,
   now: number,
 ) {
-  graph.flows.step(now, (s, d) => endpointOf(s, sc, graph, bd) !== null && endpointOf(d, sc, graph, bd) !== null)
+  const v: View = { graph, scene: sc, bodies: bd, hl }
+  graph.flows.step(now, (s, d) => endpointOf(s, v) !== null && endpointOf(d, v) !== null)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, cv.width, cv.height)
   ctx.setTransform(dpr * cam.k, 0, 0, dpr * cam.k, dpr * cam.x, dpr * cam.y)
-  const counts = drawEdges(ctx, graph, sc, bd)
-  drawParticles(ctx, graph, sc, bd)
-  drawDrops(ctx, graph, sc, bd, now)
+  const counts = drawEdges(ctx, v)
+  drawParticles(ctx, v)
+  drawDrops(ctx, v, now)
   ctx.globalAlpha = 1
   cv.dataset.flows = String(counts.flows)
   cv.dataset.drops = String(counts.drops)
@@ -119,7 +120,8 @@ function paintFrame(
 
 // TrafficCanvas draws live traffic edges, particles and policy-drop marks on a 2D canvas over
 // the SVG web (ADR-003). Its animation loop sleeps whenever no flow is active or Traffic is off.
-export function TrafficCanvas({ graph, scene, bodies, camRef, size, visible }: Props) {
+// The paint closure is refreshed every render, so a new neighbourhood reaches a running loop.
+export function TrafficCanvas({ graph, scene, bodies, camRef, size, visible, hl }: Props) {
   const cvRef = useTrafficCanvas({
     graph,
     scene,
@@ -127,7 +129,7 @@ export function TrafficCanvas({ graph, scene, bodies, camRef, size, visible }: P
     camRef,
     size,
     visible,
-    paint: (ctx, cv, sc, bd, cam, dpr, now) => paintFrame(graph, ctx, cv, sc, bd, cam, dpr, now),
+    paint: (ctx, cv, sc, bd, cam, dpr, now) => paintFrame(graph, hl, ctx, cv, sc, bd, cam, dpr, now),
   })
   return <canvas ref={cvRef} className="fx" data-testid="traffic-canvas" data-flows="0" data-drops="0" aria-hidden="true" />
 }

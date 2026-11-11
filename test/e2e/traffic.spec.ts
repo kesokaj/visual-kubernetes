@@ -9,6 +9,7 @@ import { urlOf } from './servers'
 const WEB = 'app/vk-demo/Deployment/web'
 const API = 'app/vk-demo/Deployment/api'
 const CACHE = 'app/vk-demo/Deployment/cache'
+const INTERNET = 'ext/internet'
 
 test.use({ baseURL: urlOf('traffic') })
 
@@ -17,8 +18,11 @@ async function sampleEdgePixels(page: Page, srcId: string, dstId: string) {
     ([sId, dId]) => {
       const cv = document.querySelector<HTMLCanvasElement>('[data-testid="traffic-canvas"]')
       const ctx = cv?.getContext('2d')
-      const sIcon = document.querySelector<SVGGraphicsElement>(`[data-layer="bodies"] > g[data-id="${sId}"] > use`)
-      const dIcon = document.querySelector<SVGGraphicsElement>(`[data-layer="bodies"] > g[data-id="${dId}"] > use`)
+      // A body's icon is its sprite <use>, or the inline globe for ext/internet.
+      const icon = (id: string) =>
+        document.querySelector<SVGGraphicsElement>(`[data-layer="bodies"] > g[data-id="${id}"] > :is(use, g.globe)`)
+      const sIcon = icon(sId ?? '')
+      const dIcon = icon(dId ?? '')
       if (!cv || !ctx || !sIcon || !dIcon || cv.width === 0 || cv.height === 0) {
         return { blue: 0, red: 0 }
       }
@@ -94,7 +98,7 @@ test('draws forwarded blue particles, red policy-drop particles, and clears when
   await page.goto('/')
 
   const canvas = page.getByTestId('traffic-canvas')
-  await expect(canvas).toHaveAttribute('data-flows', '3', { timeout: 10_000 })
+  await expect(canvas).toHaveAttribute('data-flows', '4', { timeout: 10_000 })
   await expect(canvas).toHaveAttribute('data-drops', '1')
 
   // Forwarded edge (web -> api) renders blue particles and zero red drop pixels.
@@ -118,7 +122,7 @@ test('draws forwarded blue particles, red policy-drop particles, and clears when
 
   // Toggling Traffic back on restores the flows.
   await trafficSwitch.click()
-  await expect(canvas).toHaveAttribute('data-flows', '3', { timeout: 5_000 })
+  await expect(canvas).toHaveAttribute('data-flows', '4', { timeout: 5_000 })
   await expect.poll(() => nonEmptyCanvasPixels(page), { timeout: 5_000 }).toBeGreaterThan(0)
 
   // API hub panel preserves snapshot capabilities across partial hubble-relay updates, and R9/R10 hold.
@@ -129,4 +133,32 @@ test('draws forwarded blue particles, red policy-drop particles, and clears when
   expect(await smallText(page)).toEqual([])
   expect(foreignRequests(urls, urlOf('traffic'))).toEqual([])
   expect(csp).toEqual([])
+})
+
+test('draws the internet globe with world traffic into its entrypoint, hidden with Internet & ingress', async ({ page }) => {
+  await page.goto('/')
+  const globe = page.locator(`[data-layer="bodies"] > g[data-id="${INTERNET}"]`)
+  await expect(globe).toHaveAttribute('data-role', 'ext')
+  await expect(globe.locator('[data-icon="globe"]')).toHaveCount(1)
+  await expect(page.locator(`[data-label-for="${INTERNET}"]`)).toContainText('1 entrypoint')
+  await expect(page.locator(`[data-edge="routes:${INTERNET}->${WEB}"]`)).toHaveCount(1)
+
+  // World flow (ext/internet -> web) carries blue forwarded particles out of the globe.
+  await expect
+    .poll(async () => (await sampleEdgePixels(page, INTERNET, WEB)).blue, { timeout: 5_000 })
+    .toBeGreaterThan(0)
+
+  // The globe opens a panel listing what it reaches, without a config fetch.
+  await globe.click({ force: true })
+  const panel = page.getByTestId('panel')
+  await expect(panel).toHaveAttribute('data-panel-role', 'ext')
+  await expect(panel.locator(`[data-entrypoint="${WEB}"]`)).toHaveCount(1)
+  await expect(panel.locator('[data-section="config"]')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  // Internet & ingress off hides the globe and drops its flow from the overlay.
+  await page.locator('.f-pill').click()
+  await page.getByRole('switch', { name: 'Internet & ingress' }).click()
+  await expect(globe).toHaveCount(0)
+  await expect(page.getByTestId('traffic-canvas')).toHaveAttribute('data-flows', '3', { timeout: 5_000 })
 })

@@ -94,3 +94,17 @@ export function Sprite() {
 export function Icon({ name, size, x, y }: { name: IconName; size: number; x: number; y: number }) {
   return <use href={`#k-${name}`} x={x - size / 2} y={y - size / 2} width={size} height={size} />
 }
+
+// Globe is the internet (ext/internet): drawn inline after design/mockup-v3.html globe(), since
+// the vendored Kubernetes set has no globe (plan D5). Centred on (x, y), size wide.
+export function Globe({ size, x, y }: { size: number; x: number; y: number }) {
+  const r = size / 2
+  const lat = `M${x - r} ${y}H${x + r}M${x - r * 0.85} ${y - r * 0.5}H${x + r * 0.85}M${x - r * 0.85} ${y + r * 0.5}H${x + r * 0.85}`
+  return (
+    <g className="globe" data-icon="globe">
+      <circle cx={x} cy={y} r={r} fill="#fff" stroke="#326ce5" strokeWidth={2} />
+      <ellipse cx={x} cy={y} rx={r * 0.45} ry={r} fill="none" stroke="#326ce5" strokeWidth={1.5} />
+      <path d={lat} stroke="#326ce5" strokeWidth={1.2} fill="none" />
+    </g>
+  )
+}

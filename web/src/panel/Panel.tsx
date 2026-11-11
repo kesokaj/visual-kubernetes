@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { Icon, iconFor } from '../icons/sprite'
+import { Globe, Icon, iconFor } from '../icons/sprite'
 import type { Graph } from '../lib/graph'
 import type { Entity } from '../lib/wire'
 import { foldedStatics } from '../web/folding'
@@ -7,21 +7,22 @@ import { objectUrl, useText } from './remote'
 import { ConditionsSection, ConfigSection, LogsSection } from './remoteSections'
 import { CapabilitiesSection, EventsSection, KV, MetricsSection, Section } from './sections'
 
-type Role = 'hub' | 'cp' | 'node' | 'pod' | 'app' | 'sat'
+type Role = 'hub' | 'cp' | 'node' | 'pod' | 'app' | 'sat' | 'ext'
 
 function roleOf(e: Entity): Role {
   if (e.id === 'cp/apiserver') return 'hub'
   if (e.group === 'cp') return 'cp'
   if (e.kind === 'Node') return 'node'
+  if (e.group === 'ext') return 'ext'
   // app/ first: a bare Pod's own app (D23) has kind Pod too (BUG-001)
   if (e.id.startsWith('app/')) return 'app'
   return e.kind === 'Pod' ? 'pod' : 'sat'
 }
 
 // configId is the D13 object /api/objects can serve for a body: an app is shown through its
-// top workload; cp/* parts are inferred and have no single object.
+// top workload; cp/* parts and ext/internet are inferred and have no single object.
 function configId(e: Entity, role: Role): string | undefined {
-  if (role === 'hub' || role === 'cp') return undefined
+  if (role === 'hub' || role === 'cp' || role === 'ext') return undefined
   return role === 'app' ? e.ownerId : e.id
 }
 
@@ -53,9 +54,10 @@ export function Panel({ graph, id, onClose, onSelect }: Props) {
         {role === 'node' && <ConditionsSection res={config} node={e} />}
         {(role === 'app' || role === 'pod') && <MetricsSection history={graph.metrics.history.get(e.id) ?? []} caps={graph.caps} />}
         {role === 'app' && <PodChips pods={pods} onSelect={onSelect} />}
+        {role === 'ext' && <Entrypoints graph={graph} id={e.id} onSelect={onSelect} />}
         <EventsSection events={graph.events.about(eventIds(e, pods))} />
         {(role === 'app' || role === 'pod') && <LogsSection podId={role === 'pod' ? e.id : pods[0]?.id} />}
-        {role !== 'hub' && role !== 'cp' && <ConfigSection res={config} objectId={configId(e, role)} />}
+        {role !== 'hub' && role !== 'cp' && role !== 'ext' && <ConfigSection res={config} objectId={configId(e, role)} />}
       </div>
     </aside>
   )
@@ -68,7 +70,7 @@ function PanelHead({ title, sub, kind, app = false, onClose }: HeadProps) {
     <header className="p-head">
       {kind && (
         <svg className="p-icon" viewBox="-20 -20 40 40" aria-hidden="true">
-          <Icon name={iconFor(kind, app)} size={36} x={0} y={0} />
+          {kind === 'Internet' ? <Globe size={36} x={0} y={0} /> : <Icon name={iconFor(kind, app)} size={36} x={0} y={0} />}
         </svg>
       )}
       <div className="p-title">
@@ -121,6 +123,26 @@ function PodChips({ pods, onSelect }: { pods: readonly Entity[]; onSelect: (id: 
         {pods.map((p) => (
           <button type="button" key={p.id} className="chip" data-pod={p.id} onClick={() => onSelect(p.id)}>
             {p.name} <span className="muted">{p.status}</span>
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+// Entrypoints lists what the internet reaches (its routes edges: LoadBalancer/NodePort
+// Services, Ingresses, Gateways or their apps); a chip selects one.
+function Entrypoints({ graph, id, onSelect }: { graph: Graph; id: string; onSelect: (id: string) => void }) {
+  const targets = [...graph.edges.values()]
+    .filter((x) => x.from === id && x.kind === 'routes')
+    .flatMap((x) => graph.entities.get(x.to) ?? [])
+    .sort((a, b) => a.id.localeCompare(b.id))
+  return (
+    <Section title={`Entrypoints · ${targets.length}`} name="entrypoints">
+      <div className="chips">
+        {targets.map((t) => (
+          <button type="button" key={t.id} className="chip" data-entrypoint={t.id} onClick={() => onSelect(t.id)}>
+            {t.name} <span className="muted">{t.kind}</span>
           </button>
         ))}
       </div>

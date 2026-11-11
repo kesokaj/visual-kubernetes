@@ -11,8 +11,9 @@ import { MAX_BUBBLES, foldedStatics, overBudgetCounter } from './folding'
 import { sizeApps } from './sizing'
 
 // Sizes in world units, from design/mockup-v3.html (apps 44, satellites 28, nodes 58, cp 54,
-// pods 24 on a ring 48 beyond the app icon). App icons are resized by sizing.ts.
-export const SIZE = { app: 44, sat: 28, node: 58, cp: 54, hub: 64, pod: 24 } as const
+// pods 24 on a ring 48 beyond the app icon, the internet globe 54). App icons are resized by
+// sizing.ts.
+export const SIZE = { app: 44, sat: 28, node: 58, cp: 54, hub: 64, pod: 24, ext: 54 } as const
 const POD_GAP = 30 // arc length per pod on the ring
 const SAT_GAP = 18 // app-owned satellites sit this far beyond the app icon, inside the pod ring
 
@@ -21,7 +22,8 @@ export const NODE_COLORS = [
   '#65a30d', '#0891b2', '#9333ea', '#c2410c', '#be185d',
 ] as const
 
-export type Role = 'hub' | 'cp' | 'node' | 'app' | 'sat'
+// ext is ext/internet: the model draws it only while an entrypoint exists (plan D4).
+export type Role = 'hub' | 'cp' | 'node' | 'app' | 'sat' | 'ext'
 
 // Anchor is one body the force layout moves. Pods and app-owned satellites ride on their app.
 export type Anchor = {
@@ -57,6 +59,7 @@ function roleOf(e: Entity): Role | 'counter' | null {
   if (e.group === 'cp') return 'cp'
   if (e.kind === 'Node') return 'node'
   if (e.kind === 'Counter') return 'counter'
+  if (e.group === 'ext') return 'ext'
   // app/ first: a bare Pod's own app (D23) has kind Pod too, and must draw as an app
   if (e.id.startsWith('app/')) return 'app'
   if (e.kind === 'Pod') return null
@@ -64,7 +67,7 @@ function roleOf(e: Entity): Role | 'counter' | null {
 }
 
 function baseIcon(role: Role): number {
-  return { hub: SIZE.hub, cp: SIZE.cp, node: SIZE.node, app: SIZE.app, sat: SIZE.sat }[role]
+  return { hub: SIZE.hub, cp: SIZE.cp, node: SIZE.node, app: SIZE.app, sat: SIZE.sat, ext: SIZE.ext }[role]
 }
 
 // ringRadius grows with the pod count so pods never overlap on the ring, and clears the icon.
@@ -129,6 +132,10 @@ function applyFocus(anchors: Map<string, Anchor>, edges: readonly Edge[], filter
   }
   for (const [id, a] of anchors) {
     if (a.role === 'node' && !hostedNodes.has(id)) anchors.delete(id)
+  }
+  // The globe stays only while it still routes to something shown.
+  for (const [id, a] of anchors) {
+    if (a.role === 'ext' && !edges.some((e) => e.from === id && e.kind === 'routes' && anchors.has(e.to))) anchors.delete(id)
   }
 }
 

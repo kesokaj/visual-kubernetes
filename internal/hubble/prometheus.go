@@ -167,8 +167,13 @@ func resolvePromSide(m map[string]string, idx *modelIndex, ns1, n1, ns2, n2, pai
 	}
 	if raw := m[pairKey]; raw != "" {
 		if ns, name, ok := strings.Cut(raw, "/"); ok {
-			return idx.resolveName(ns, name)
+			if id := idx.resolveName(ns, name); id != "" {
+				return id
+			}
 		}
+	}
+	if promExternal(m, ns1, n1, ns2, n2, pairKey) {
+		return idx.internet()
 	}
 	return ""
 }

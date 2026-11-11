@@ -1,5 +1,6 @@
 import type { Camera } from './camera'
 import type { Body } from './layout'
+import { fadedBy } from './neighborhood'
 import { SIZE, type Anchor, type Scene } from './scene'
 
 // Labels are drawn in screen space, outside the zoomed world, so their size never depends on
@@ -27,7 +28,9 @@ function bodyBottom(a: Anchor): number {
   return a.ring > 0 ? a.ring + POD_RING_OUT : a.sats.length > 0 ? a.satR + SIZE.sat / 2 : a.icon / 2
 }
 
-export function Labels({ scene, bodies, cam }: { scene: Scene; bodies: Map<string, Body>; cam: Camera }) {
+type Props = { scene: Scene; bodies: Map<string, Body>; cam: Camera; hl: ReadonlySet<string> | null }
+
+export function Labels({ scene, bodies, cam, hl }: Props) {
   const showSub = cam.k >= SUB_MIN_ZOOM
   return (
     <g data-layer="labels">
@@ -37,9 +40,11 @@ export function Labels({ scene, bodies, cam }: { scene: Scene; bodies: Map<strin
         const { name, sub } = labelText(a)
         const x = (b.x ?? 0) * cam.k + cam.x
         const y = ((b.y ?? 0) + bodyBottom(a)) * cam.k + cam.y + NAME_GAP
-        const cls = a.dimmed ? 'dimmed' : !scene.focused && a.entity.filterGroup === 'system' ? 'sys' : undefined
+        const base = a.dimmed ? 'dimmed' : !scene.focused && a.entity.filterGroup === 'system' ? 'sys' : undefined
+        const faded = fadedBy(hl, a.id)
+        const cls = faded ? [base, 'faded'].filter(Boolean).join(' ') : base
         return (
-          <g key={a.id} data-label-for={a.id} className={cls}>
+          <g key={a.id} data-label-for={a.id} className={cls} data-faded={faded ? 'true' : undefined}>
             <text className="lbl name" x={x} y={y} textAnchor="middle">
               {name}
             </text>

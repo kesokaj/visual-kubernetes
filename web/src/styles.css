@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import './panel/panel.css';
 @import './replay/replay.css';
+@import './web/web.css';
 
 /* One white page (design/mockup-v3.html): no bars or borders; the filter pill is the only chrome.
    System fonts only: the page never fetches anything from another origin (PRD R9). */

@@ -1,0 +1,57 @@
+/* Grouping, neighbourhood fade and zoom buttons (plan PLAN-2026-11-11-1703: D1 disc, D2 buttons, D3 fade). */
+
+/* Outside the hovered or selected neighbourhood: faded, never moved. */
+.vk .faded {
+  opacity: 0.18;
+  transition: opacity 0.16s ease;
+}
+
+/* The faint disc that holds an app with its pods and satellites, and the spokes tying them in. */
+.vk .group-disc {
+  fill: #326ce5;
+  fill-opacity: 0.045;
+  stroke: none;
+}
+.vk .tether {
+  fill: none;
+  stroke: #cbd5e1;
+  stroke-width: 1.1;
+}
+
+/* One pill (PRD R6, plan D2): the filter toggle and the zoom buttons share a single capsule. */
+.vk .f-bar {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+.vk .f-bar .f-pill {
+  box-shadow: none;
+  border-radius: 0;
+}
+.vk .f-zoom {
+  display: flex;
+  border-left: 1px solid var(--line);
+}
+.vk .f-zoom button {
+  font: 600 13px var(--font);
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  min-width: 30px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.vk .f-zoom button + button {
+  border-left: 1px solid var(--line);
+}
+.vk .f-zoom button:hover {
+  color: var(--k8s);
+}
+.vk .f-zoom button:focus-visible {
+  outline: 2px solid var(--k8s);
+  outline-offset: -2px;
+}
