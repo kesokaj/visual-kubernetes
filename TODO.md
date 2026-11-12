@@ -11,6 +11,8 @@
 
 ## Backlog
 
+- 2026-11-12: Route Hubble traffic through the destination Service (`via` on `flow` events) — HANDOFF-2026-11-12-0948-route-traffic-through-service.
+
 - ~~Globe drawn when its only entrypoint targets are hidden~~ fixed: `scene.ts` `pruneGlobe` runs under every filter (2026-11-11, review DoD finding 3).
 - ~~`interact.spec.ts:101` zoom flake~~ fixed: baseline read after `settle()` (2026-11-11, verifier root cause).
 - Size-metric switch (PRD C3; added 2026-11-09, plan D11).
