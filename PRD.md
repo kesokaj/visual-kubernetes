@@ -1,7 +1,7 @@
 # PRD — visual-kubernetes
 
-A read-only, real-time visualizer of a Kubernetes cluster's internals on one white page, for live teaching demos.
-Status: approved · Owner: kesokaj · Last updated: 2026-11-11 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
+A real-time visualizer of a Kubernetes cluster's internals on one white page for live teaching demos — read-only by default, with an opt-in interactive demo mode for non-production demo clusters.
+Status: approved · Owner: kesokaj · Last updated: 2026-11-12 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
 
 <!-- Read before every significant change. Immutable without the user's explicit approval of the exact text:
      propose the edit → approval → ADR → PRD.md and TODO.md in one commit (global context § Hard rules).
@@ -30,16 +30,16 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 
 ## Non-goals
 
-- Changing a cluster in any way: no writes, no enabling VPA, Hubble or node pools, no provisioning.
+- Production cluster operation or general cluster administration: interactive demo mode (`--demo`, `install-demo.yaml`, `install-iap.yaml`) is strictly for non-production teaching demos; the app never provisions clusters or enables cluster features (VPA, Hubble, node pools), and never mutates or enters system namespaces.
 - Helm charts or operators in v1.
-- Authentication on the UI. The default install is reached through `kubectl port-forward`; the opt-in LoadBalancer variant relies on source ranges (R7).
+- Built-in user management or login forms. Default installs use `kubectl port-forward`; `install-lb.yaml` stays read-only behind source ranges; shared remote access to interactive demo mode uses Google Identity-Aware Proxy (`--iap-audience`, `install-iap.yaml`, R7).
 - Multi-cluster views, persistence or history beyond the in-memory timeline.
 - Installing optional traffic sources (Hubble, OTel); they are used only when already present.
 
 ## Must — non-negotiable
 
-- **R1** — The app only reads: its RBAC grants get, list and watch (plus `get` on `nodes/stats`, `pods/log` and the named non-resource URLs) and no verb that writes.
-  <!-- provenance: operator "Remember this is only to visualize.", 2026-11-09; enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `test/e2e/live.spec.ts` validateCanIList (each validated in its must-fail state) -->
+- **R1** — By default (`install.yaml`, `install-kube-system.yaml`, `install-lb.yaml`, and `--demo=false`), the app only reads: its RBAC grants get, list and watch (plus `get` on `nodes/stats`, `pods/log` and the named non-resource URLs) and no verb that writes or enters pods. Opt-in interactive demo mode (`--demo`, `install-demo.yaml`, `install-iap.yaml` — non-production demo clusters only) adds `patch` and `update` on `apps` `deployments`, `statefulsets` and `daemonsets` (plain container `env` only) plus `get` and `create` on `pods/exec`, refuses system namespaces (`kube-system`, `kube-public`, `kube-node-lease`, `visual-kubernetes`, `gke-managed-*`, `gmp-*`), and proxies only presenter-opened Service ports.
+  <!-- provenance: operator "Remember this is only to visualize.", 2026-11-09, amended 2026-11-12 (ADR-010); enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `test/e2e/live.spec.ts` validateCanIList (each validated in its must-fail state) -->
 - **R2** — The app never reads Secrets, except `get` on the secret `hubble-relay-client-certs` by `resourceNames`.
   <!-- provenance: grill Q8 + row 5, 2026-11-09; enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `internal/watch/watch_test.go` TestWatcherNeverReadsSecrets, `internal/model/satellites_test.go` TestSecretsAndEventsAreNeverStored -->
 - **R3** — Installation is one `kubectl apply -f install.yaml`; any added step needs the operator's approval.
@@ -48,10 +48,10 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
   <!-- provenance: operator "it should work on all clusters when having the correct permissions", "use as much built in as possible", 2026-11-09; enforced by: `internal/probe/probe_test.go` TestProbeStates, `internal/watch/watch_test.go` TestWatcherSyncsAroundForbiddenGroup, `test/e2e/live.spec.ts` -->
 - **R5** — The page reflects cluster changes in real time and shows the causal chain of each observed change with pause, step and replay.
   <!-- provenance: operator turn 1 "visualizing everything in real time"; grill Q2, 2026-11-09; enforced by: `cmd/visual-kubernetes/serve_test.go` TestChainSinkPrimesThenObserves, `test/e2e/replay.spec.ts`, `test/e2e/live.spec.ts` -->
-- **R6** — The page is white with a subtle grid-paper background, uses an airy force-directed web with official Kubernetes icons, hides `visual-kubernetes` itself by default, and shows no chrome except a compact filter pill (8 component groups on by default, a `visual-kubernetes` toggle, and `Deployment`/`StatefulSet`/`DaemonSet` and `Namespace` highlight-or-only-show filters) and a click panel.
-  <!-- provenance: operator 2026-11-09 15:33 ("skip the hierarchy", "small filtering view … default is everything on"), amended 2026-11-11 (D54: grid paper, airy spacing, self-hide, workload-kind & namespace focus filters); enforced by: `test/e2e/web.spec.ts`, `test/e2e/filter.spec.ts`, `test/e2e/panel.spec.ts` -->
-- **R7** — The default install exposes the UI only through a ClusterIP Service and `kubectl port-forward`. A separate opt-in manifest, `install-lb.yaml`, exposes it through a network LoadBalancer Service whose `loadBalancerSourceRanges` the operator must set. That variant starts with the pod-logs panel off, and the docs say the page has no authentication, so anyone inside those ranges can read the cluster's objects.
-  <!-- provenance: operator "loadbalancer yes", 2026-11-10 (supersedes grill Q10 + row 12; ADR-008); enforced by: `deploy/install_test.go` TestInstallServiceIsClusterIP, `deploy/variants_test.go` TestInstallLBRequiresSourceRanges, `cmd/visual-kubernetes/serve_test.go` TestRunLogsFlag, `test/e2e/panel.spec.ts` -->
+- **R6** — The page is white with a subtle grid-paper background, uses an airy force-directed web with official Kubernetes icons, hides `visual-kubernetes` itself by default, and shows no standing chrome except a compact filter pill (8 component groups on by default, a `visual-kubernetes` toggle, and `Deployment`/`StatefulSet`/`DaemonSet` and `Namespace` highlight-or-only-show filters) and the click panel (which in `--demo` mode may open an on-demand sandboxed Service browser sheet or pod terminal drawer).
+  <!-- provenance: operator 2026-11-09 15:33 ("skip the hierarchy", "small filtering view … default is everything on"), amended 2026-11-11 (D54) and 2026-11-12 (ADR-010); enforced by: `test/e2e/web.spec.ts`, `test/e2e/filter.spec.ts`, `test/e2e/panel.spec.ts` -->
+- **R7** — The default `install.yaml` and opt-in `install-demo.yaml` expose the UI only through a ClusterIP Service and `kubectl port-forward`; without `--iap-audience`, `--demo` refuses non-loopback `Host` headers on every non-`/healthz` route. `install-lb.yaml` stays read-only (`--logs=false`, `--demo=false`) behind operator-set `loadBalancerSourceRanges`. Shared remote access to `--demo` requires `install-iap.yaml` (`--iap-audience` + `--allowed-host`), validating `x-goog-iap-jwt-assertion` via `google.golang.org/api/idtoken` on every UI and `/api/*` request.
+  <!-- provenance: operator "loadbalancer yes", 2026-11-10 (ADR-008), amended 2026-11-12 (ADR-011); enforced by: `deploy/install_test.go` TestInstallServiceIsClusterIP, `deploy/variants_test.go` TestInstallLBRequiresSourceRanges, `cmd/visual-kubernetes/serve_test.go` TestRunLogsFlag, `test/e2e/panel.spec.ts` -->
 - **R8** — Kubelet connections always verify TLS; the app never uses `nodes/proxy` or skips verification.
   <!-- provenance: grill row 4, 2026-11-09; enforced by: `internal/kubelet/client_test.go` TestClientRefusesUnverifiedCert (fails when verification is disabled; ADR-005) -->
 - **R9** — The image serves every UI asset; the page makes no external network request at runtime.
