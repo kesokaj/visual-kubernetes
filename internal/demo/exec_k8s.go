@@ -25,8 +25,8 @@ type KubeExec struct {
 	Log     *slog.Logger
 }
 
-// ResolvePod checks that ref names a Running non-protected Pod in Model and selects a valid
-// container (defaulting to the first container when container is empty).
+// ResolvePod checks that ref names a Running non-protected Pod off the host network in Model and
+// selects a valid container (defaulting to the first container when container is empty).
 func (e *KubeExec) ResolvePod(ref model.Ref, container string) (PodTarget, *StatusErr) {
 	if e == nil || e.Model == nil {
 		return PodTarget{}, &StatusErr{Code: http.StatusServiceUnavailable, Msg: "live model unavailable"}
@@ -44,6 +44,11 @@ func (e *KubeExec) ResolvePod(ref model.Ref, container string) (PodTarget, *Stat
 	}
 	if pod.Status.Phase != corev1.PodRunning {
 		return PodTarget{}, &StatusErr{Code: http.StatusConflict, Msg: "pod is not running"}
+	}
+	// A hostNetwork Pod shares the node's network namespace, so a shell in it reaches node-local
+	// services; the demo proxy refuses these Pods for the same reason (endpoints.go).
+	if pod.Spec.HostNetwork {
+		return PodTarget{}, &StatusErr{Code: http.StatusForbidden, Msg: "hostNetwork pods are refused in demo mode"}
 	}
 	if len(pod.Spec.Containers) == 0 {
 		return PodTarget{}, &StatusErr{Code: http.StatusBadRequest, Msg: "pod has no containers"}

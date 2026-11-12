@@ -76,6 +76,13 @@ func seedExecModel(t *testing.T) *model.Model {
 		},
 		model.Change{
 			Obj: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "shop", Name: "hostnet-0", UID: "pod-hostnet-0"},
+				Spec:       corev1.PodSpec{HostNetwork: true, Containers: []corev1.Container{{Name: "agent"}}},
+				Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+			},
+		},
+		model.Change{
+			Obj: &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "kube-system", Name: "coredns-0", UID: "pod-coredns-0"},
 				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "coredns"}}},
 				Status:     corev1.PodStatus{Phase: corev1.PodRunning},
@@ -124,6 +131,8 @@ func TestPodExecGuardsAndValidation(t *testing.T) {
 		{name: "unknown container", query: "id=core/Pod/shop/web-0&container=ghost", origin: ts.URL, want: http.StatusBadRequest},
 		{name: "missing pod", query: "id=core/Pod/shop/missing", origin: ts.URL, want: http.StatusNotFound},
 		{name: "pending pod", query: "id=core/Pod/shop/pending-0", origin: ts.URL, want: http.StatusConflict},
+		// A hostNetwork Pod shares the node's network namespace; the proxy refuses it too.
+		{name: "hostNetwork pod", query: "id=core/Pod/shop/hostnet-0", origin: ts.URL, want: http.StatusForbidden},
 	}
 
 	for _, tc := range cases {
