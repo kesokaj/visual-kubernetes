@@ -85,7 +85,7 @@ Everything on the page is driven by direct clicks, pointer pan/zoom, a compact b
 | `+` / `−` (keys or the buttons in the filter pill) | Zoom in or out around the centre |
 | Double-click | On a bubble: zoom onto it; on empty space: zoom in there |
 | F, or Fit in the filter pill | Fit the whole web again and resume auto-fit |
-| Filter pill (bottom-left) | Toggle the 8 component groups (all on), show `visual-kubernetes` itself (hidden by default), or `Highlight` / `Only show` matching `Deployment`, `StatefulSet`, `DaemonSet` and `Namespace` items |
+| Filter pill (bottom-left) | Toggle the 8 component groups (all on), show `visual-kubernetes` itself (hidden by default), `Highlight` / `Only show` matching `Deployment`, `StatefulSet`, `DaemonSet` and `Namespace` items, or switch what sizes apps (`Size by`: `Auto`, `Network`, `CPU`, `Memory`, `Pods`) |
 | V | Hide or show the filter pill |
 | R | Replay the newest causal chain received since the page opened (1 step/s) |
 | Space | Pause or resume replay |
@@ -109,7 +109,7 @@ The panel shows, per object:
 
 What the web encodes:
 
-- **Size:** an app's icon grows with its network throughput (rx + tx) when kubelet stats are readable, else with CPU from metrics.k8s.io, else with its pod count. The SVG's `data-size-by` says which measure is in use.
+- **Size:** by default (`Size by: Auto`) an app's icon grows with its network throughput (rx + tx) when kubelet stats are readable, else with CPU from metrics.k8s.io, else with its pod count. The filter pill's `Size by` switch pins `Network`, `CPU`, `Memory` (metrics.k8s.io working set) or `Pods` instead; metrics the cluster does not report are greyed out, and the pill label says `size: <metric>` while one is pinned. The SVG's `data-size-by` says which measure is in use.
 - **Halo:** the three busiest apps by that measure.
 - **Pulse:** a ring when an app is created or changes status (a scale), or one of its pods is added, removed or changes status (for example on a restart).
 - **Travel:** a pod newly placed on a node moves along that node's thread to its app before taking its place on the ring.

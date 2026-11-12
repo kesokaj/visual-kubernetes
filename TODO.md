@@ -9,10 +9,9 @@
 
 ## Next
 
-- Size-metric switch (`network | CPU | memory | pods`, `PRD.md` `C3`)
-
 ## Backlog
 
+- ~~Size-metric switch (`network | CPU | memory | pods`, `PRD.md` `C3`)~~ done: filter pill `Size by` switch (2026-11-12, `size.spec.ts`).
 - Optional persistence of open `--demo` proxy port toggles across restarts (added 2026-11-12, `PLAN-2026-11-12-1113` follow-up).
 - ~~Globe drawn when its only entrypoint targets are hidden~~ fixed: `scene.ts` `pruneGlobe` runs under every filter (2026-11-11, review DoD finding 3).
 - ~~`interact.spec.ts:101` zoom flake~~ fixed: baseline read after `settle()` (2026-11-11, verifier root cause).

@@ -30,12 +30,29 @@ export class Metrics {
   }
 }
 
-// measureOf is the value a sample contributes under sizeBy; pods are counted by the scene.
-export function measureOf(s: Sample | undefined, sizeBy: SizeBy): number {
+// SizeMetric is what app bubbles can be sized by on the page (PRD C3): the server's sizeBy
+// choices plus memory, which the server samples but never picks on its own.
+export const SIZE_METRICS = ['network', 'cpu', 'memory', 'pods'] as const
+export type SizeMetric = SizeBy | 'memory'
+
+// measureOf is the value a sample contributes under a metric; pods are counted by the scene.
+export function measureOf(s: Sample | undefined, metric: SizeMetric): number {
   if (!s) return 0
-  if (sizeBy === 'network') return (s.rxBps ?? 0) + (s.txBps ?? 0)
-  if (sizeBy === 'cpu') return s.cpuMilli ?? 0
+  if (metric === 'network') return (s.rxBps ?? 0) + (s.txBps ?? 0)
+  if (metric === 'cpu') return s.cpuMilli ?? 0
+  if (metric === 'memory') return s.memBytes ?? 0
   return 0
+}
+
+// metricAvailable reports whether the latest samples carry a metric at all; pods always do.
+export function metricAvailable(m: Metrics, metric: SizeMetric): boolean {
+  if (metric === 'pods') return true
+  for (const s of m.latest.values()) {
+    if (metric === 'network' && (s.rxBps !== undefined || s.txBps !== undefined)) return true
+    if (metric === 'cpu' && s.cpuMilli !== undefined) return true
+    if (metric === 'memory' && s.memBytes !== undefined) return true
+  }
+  return false
 }
 
 // EventLog keeps the newest Kubernetes Events, de-duplicated so a replayed or resent Event is

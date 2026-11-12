@@ -6,7 +6,8 @@ import {
   type FilterState,
 } from '../filter/state'
 import type { Graph } from '../lib/graph'
-import type { Edge, EdgeKind, Entity, SizeBy } from '../lib/wire'
+import type { SizeMetric } from '../lib/telemetry'
+import type { Edge, EdgeKind, Entity } from '../lib/wire'
 import { MAX_BUBBLES, foldedStatics, overBudgetCounter } from './folding'
 import { sizeApps } from './sizing'
 
@@ -37,7 +38,7 @@ export type Anchor = {
   collideR: number // collision clearance radius including screen-space label room
   pods: Entity[]
   sats: Entity[]
-  measure: number // the sizeBy value (apps)
+  measure: number // the size metric's value (apps)
   top: number // 1–3 for the halo, else 0
   dimmed: boolean // dimmed in place when a Highlight focus filter does not match
 }
@@ -50,7 +51,7 @@ export type Scene = {
   nodeColor: Map<string, string>
   counters: Entity[] // corner counters: the model's counter/* plus the page's over-budget one
   statics: Map<string, string[]> // cp/* id → static-pod apps folded behind it (D30)
-  sizeBy: SizeBy
+  sizeBy: SizeMetric // the metric in use: the filter's size switch resolved against the server's sizeBy
   focused: boolean
 }
 
@@ -176,7 +177,7 @@ export function buildScene(g: Graph, filter: FilterState, palette: Map<string, s
     else app.sats.push(e)
   }
   const apps = [...anchors.values()].filter((a) => a.role === 'app')
-  const sizeBy = sizeApps(apps, g.metrics, podCount)
+  const sizeBy = sizeApps(apps, g.metrics, podCount, filter.size)
   const over = keepBudget(anchors)
   pruneGlobe(anchors, allEdges) // again: the budget may have dropped the globe's targets
   if (over > 0 && filter.groups.has('system')) counters.push(overBudgetCounter(over))

@@ -2,6 +2,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import { ICON_VIEWBOX, type IconName } from '../icons/sprite'
 import type { Graph } from '../lib/graph'
 import type { FilterGroup } from '../lib/wire'
+import { SizeSwitch } from './SizeSwitch'
 import {
   availableNamespaces,
   defaultFilter,
@@ -196,8 +197,9 @@ function FocusControls({
 }
 
 // FilterPill is the only chrome on the page: a compact pill bottom-left that opens component
-// switches (all on by default), self-visibility (off by default), and workload/namespace focus,
-// with the zoom buttons at the end of the same capsule (R6, plan D2).
+// switches (all on by default), self-visibility (off by default), workload/namespace focus and
+// the size-metric switch (auto by default), with the zoom buttons at the end of the same capsule
+// (R6, plan D2).
 export function FilterPill({ graph, filter, onChange, zoom }: Props) {
   const [open, setOpen] = useState(false)
   const version = useSyncExternalStore(graph.subscribe, graph.getVersion, graph.getVersion)
@@ -232,6 +234,8 @@ export function FilterPill({ graph, filter, onChange, zoom }: Props) {
           />
           <div className="f-sep" />
           <FocusControls filter={filter} namespaces={namespaces} onChange={onChange} />
+          <div className="f-sep" />
+          <SizeSwitch size={filter.size} metrics={graph.metrics} onSelect={(size) => onChange({ ...filter, size })} />
           <div className="f-foot">
             <button type="button" className="f-all" onClick={() => onChange(defaultFilter())}>
               All on

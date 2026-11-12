@@ -1,3 +1,4 @@
+import type { SizeMetric } from '../lib/telemetry'
 import { FILTER_GROUPS, type Edge, type Entity, type FilterGroup } from '../lib/wire'
 
 export const WORKLOAD_KINDS = ['Deployment', 'StatefulSet', 'DaemonSet'] as const
@@ -6,12 +7,17 @@ export type WorkloadKind = (typeof WORKLOAD_KINDS)[number]
 export const FOCUS_MODES = ['highlight', 'only'] as const
 export type FocusMode = (typeof FOCUS_MODES)[number]
 
+// SizeChoice is the presenter's size switch (PRD C3): auto follows the server's sizeBy
+// fallback (network, else CPU, else pods; PRD S2), the rest pin one metric.
+export type SizeChoice = 'auto' | SizeMetric
+
 export type FilterState = {
   readonly groups: ReadonlySet<FilterGroup>
   readonly showSelf: boolean
   readonly mode: FocusMode
   readonly kinds: ReadonlySet<WorkloadKind>
   readonly namespaces: ReadonlySet<string>
+  readonly size: SizeChoice
 }
 
 const SELF_NAME = 'visual-kubernetes'
@@ -25,6 +31,7 @@ export function defaultFilter(): FilterState {
     mode: 'highlight',
     kinds: new Set<WorkloadKind>(),
     namespaces: new Set<string>(),
+    size: 'auto',
   }
 }
 
@@ -98,7 +105,20 @@ export function toggleInSet<T>(set: ReadonlySet<T>, item: T): ReadonlySet<T> {
   return next
 }
 
+export const SIZE_LABEL: Readonly<Record<SizeMetric, string>> = {
+  network: 'Network',
+  cpu: 'CPU',
+  memory: 'Memory',
+  pods: 'Pods',
+}
+
+// pillLabel names what the pill hides or focuses, plus a pinned size metric (auto says nothing).
 export function pillLabel(f: FilterState, totalGroups: number): string {
+  const size = f.size === 'auto' ? '' : ` · size: ${SIZE_LABEL[f.size]}`
+  return focusLabel(f, totalGroups) + size
+}
+
+function focusLabel(f: FilterState, totalGroups: number): string {
   const shown = FILTER_GROUPS.filter((g) => f.groups.has(g)).length
   const focus = f.kinds.size + f.namespaces.size
   if (focus === 0) {

@@ -59,14 +59,18 @@ const capabilities = {
 
 const lines = [{ atMs: 0, event: 'snapshot', data: { entities, edges, capabilities } }]
 // Network rates per app in bytes/s: web is the busiest, so it gets halo 1 and the biggest icon.
+// CPU and memory lead with other apps (cart burns CPU, batch holds a big cache) so the size
+// switch (PRD C3, size.spec.ts) shows a different top app per metric; pods lead with web (3).
 const rate = { web: 12e6, api: 5e6, cart: 1.5e6, batch: 2e5 }
+const cpuMilli = { web: 120, api: 90, cart: 400, batch: 30 }
+const memMiB = { web: 160, api: 128, cart: 96, batch: 640 }
 for (let k = 0; k < 600; k++) {
   const wave = 1 + 0.3 * Math.sin(k / 3)
   const samples = apps.flatMap(([n, p]) => {
     const rx = Math.round(rate[n] * wave * 0.6)
     const tx = Math.round(rate[n] * wave * 0.4)
-    const cpu = Math.round((rate[n] / 1e5) * wave)
-    const mem = (64 + p * 32) * 1024 * 1024
+    const cpu = Math.round(cpuMilli[n] * wave)
+    const mem = memMiB[n] * 1024 * 1024
     const appSample = { id: `app/shop/Deployment/${n}`, rxBps: rx, txBps: tx, cpuMilli: cpu, memBytes: mem }
     const podSamples = Array.from({ length: p }, (_, i) => ({
       id: `core/Pod/shop/${n}-x${i}`, rxBps: Math.round(rx / p), txBps: Math.round(tx / p),

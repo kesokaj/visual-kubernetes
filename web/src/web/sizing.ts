@@ -1,5 +1,5 @@
-import { measureOf, type Metrics } from '../lib/telemetry'
-import type { SizeBy } from '../lib/wire'
+import type { SizeChoice } from '../filter/state'
+import { measureOf, type Metrics, type SizeMetric } from '../lib/telemetry'
 import type { Anchor } from './scene'
 
 // App icon sizes in world units: the smallest app keeps a readable icon, the busiest is
@@ -8,13 +8,25 @@ export const APP_MIN = 34
 export const APP_MAX = 80
 export const HALO_TOP = 3
 
-// sizeApps sets each app's measure, icon size and top-3 rank from the current sizeBy: network
-// (rx + tx) or CPU from the latest metrics, else the app's pod count. podCount counts every
-// pod of an app, drawn or not, so hiding the Pods group does not resize the web.
-export function sizeApps(apps: Anchor[], metrics: Metrics, podCount: ReadonlyMap<string, number>): SizeBy {
-  const sizeBy = metrics.sizeBy
+// resolveSize turns the presenter's size switch into the metric in use: auto follows the
+// server's sizeBy (network, else CPU, else pods; PRD S2), anything else is pinned (PRD C3).
+export function resolveSize(choice: SizeChoice, metrics: Metrics): SizeMetric {
+  return choice === 'auto' ? metrics.sizeBy : choice
+}
+
+// sizeApps sets each app's measure, icon size and top-3 rank from the chosen metric: network
+// (rx + tx), CPU or memory from the latest metrics, else the app's pod count. A pinned metric
+// the cluster does not report sizes every app alike and ranks none. podCount counts every pod
+// of an app, drawn or not, so hiding the Pods group does not resize the web.
+export function sizeApps(
+  apps: Anchor[],
+  metrics: Metrics,
+  podCount: ReadonlyMap<string, number>,
+  choice: SizeChoice,
+): SizeMetric {
+  const metric = resolveSize(choice, metrics)
   for (const a of apps) {
-    a.measure = sizeBy === 'pods' ? (podCount.get(a.id) ?? 0) : measureOf(metrics.latest.get(a.id), sizeBy)
+    a.measure = metric === 'pods' ? (podCount.get(a.id) ?? 0) : measureOf(metrics.latest.get(a.id), metric)
   }
   const max = apps.reduce((m, a) => Math.max(m, a.measure), 0)
   for (const a of apps) {
@@ -25,5 +37,5 @@ export function sizeApps(apps: Anchor[], metrics: Metrics, podCount: ReadonlyMap
   ranked.slice(0, HALO_TOP).forEach((a, i) => {
     a.top = i + 1
   })
-  return sizeBy
+  return metric
 }
