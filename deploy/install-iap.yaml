@@ -150,7 +150,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: visual-kubernetes
-          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.2.0
           imagePullPolicy: IfNotPresent
           args:
             - --demo

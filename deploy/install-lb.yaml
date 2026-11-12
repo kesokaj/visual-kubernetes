@@ -3,7 +3,7 @@
 # ADR-008, D37, D38, D47). Prefer install.yaml (ClusterIP + kubectl port-forward) whenever
 # port-forward works.
 #
-#   curl -fsSLO https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install-lb.yaml
+#   curl -fsSLO https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install-lb.yaml
 #   sed -i.bak 's|192.0.2.0/32|<YOUR_IP>/32|g' install-lb.yaml
 #   kubectl apply -f install-lb.yaml
 #
@@ -155,7 +155,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: visual-kubernetes
-          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.2.0
           imagePullPolicy: IfNotPresent
           args:
             - --logs=false

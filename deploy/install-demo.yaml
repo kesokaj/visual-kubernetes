@@ -4,7 +4,7 @@
 # WARNING: DO NOT apply this manifest to production clusters. For production or read-only
 # inspection, apply deploy/install.yaml instead.
 #
-#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install-demo.yaml
+#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install-demo.yaml
 #   kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80
 #   open http://localhost:8080
 #
@@ -149,7 +149,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: visual-kubernetes
-          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.2.0
           imagePullPolicy: IfNotPresent
           args:
             - --demo

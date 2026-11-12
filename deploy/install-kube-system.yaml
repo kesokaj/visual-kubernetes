@@ -3,7 +3,7 @@
 # forbids user workloads in kube-system). Use this variant only when cluster policy requires
 # installing into kube-system:
 #
-#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install-kube-system.yaml
+#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install-kube-system.yaml
 #   kubectl -n kube-system port-forward svc/visual-kubernetes 8080:80
 #   open http://localhost:8080
 #
@@ -131,7 +131,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: visual-kubernetes
-          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.2.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

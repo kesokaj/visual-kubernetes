@@ -7,12 +7,12 @@ A real-time visualizer of Kubernetes internals on one white page, built for live
 One command on any cluster that grants the read-only ClusterRole (the image is public and multi-arch, amd64 + arm64):
 
 ```bash
-kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install.yaml
+kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
 kubectl -n visual-kubernetes rollout status deploy/visual-kubernetes
 kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80   # then open http://localhost:8080
 ```
 
-v0.1.0 is a pre-release, and GitHub's `releases/latest/download/…` URL skips pre-releases (it answers 404 until the first full release), so the command names the version.
+`latest` resolves to the newest full release. To pin one, name it instead: `https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install.yaml` (every release asset pins its image by digest).
 
 The release asset pins the image by digest; [`deploy/install.yaml`](deploy/install.yaml) in git names the same release by tag (immutable in the registry), so copying it works too. It creates the namespace `visual-kubernetes` (Pod Security `restricted`), a ServiceAccount, a get/list/watch-only ClusterRole and its binding, one Deployment, a ClusterIP Service and a NetworkPolicy that denies all ingress. The page has no authentication: the policy keeps other pods from using its read access, and `kubectl port-forward` still works because it enters the pod's own network namespace. The policy is enforced only where the cluster's CNI implements NetworkPolicy (GKE Dataplane V2, Cilium, Calico, kind's kindnet); elsewhere any pod can reach the Service. Remove it with `kubectl delete -f` on the same file; the app keeps no state.
 
@@ -40,7 +40,7 @@ The release asset pins the image by digest; [`deploy/install.yaml`](deploy/insta
 Every manifest uses only stateless core Kubernetes objects (`Namespace`, `ServiceAccount`, `ClusterRole`, `ClusterRoleBinding`, `Deployment`, `Service`, `NetworkPolicy`) with `app.kubernetes.io/name: visual-kubernetes` and zero finalizers, PVCs, CRDs, or webhooks. Remove an install in one command with the same manifest you applied:
 
 ```bash
-kubectl delete --ignore-not-found -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install.yaml
+kubectl delete --ignore-not-found -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
 # or from a local checkout (install.yaml, install-kube-system.yaml, install-lb.yaml, install-demo.yaml, install-iap.yaml):
 kubectl delete --ignore-not-found -f deploy/install.yaml
 ```

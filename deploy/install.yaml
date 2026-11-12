@@ -1,6 +1,6 @@
 # visual-kubernetes: read-only, real-time view of a cluster's internals (PRD R1–R3, R7, S1).
 #
-#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.1.0/install.yaml
+#   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install.yaml
 #   kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80
 #   open http://localhost:8080
 #
@@ -143,7 +143,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: visual-kubernetes
-          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.1.0
+          image: europe-north1-docker.pkg.dev/exact-loon-6dim/visual-kubernetes/visual-kubernetes:v0.2.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
