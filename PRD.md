@@ -81,6 +81,7 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 - **C1** — OTLP receiver as a second traffic source.
 - **C2** — Cloud Audit Logs stream for real (not derived) API-check steps.
 - **C3** — A switch for the size metric (network, CPU, memory, pods).
+  <!-- provenance: grill, 2026-11-09; built 2026-11-12 (filter pill `Size by`, default Auto keeps S2); enforced by: `test/e2e/size.spec.ts` (validated in its must-fail state) -->
 
 ## Known limits
 
