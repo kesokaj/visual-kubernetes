@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 
+	"github.com/kesokaj/visual-kubernetes/internal/demo"
 	"github.com/kesokaj/visual-kubernetes/internal/hubble"
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
@@ -45,6 +46,7 @@ type serveOptions struct {
 	addr       string
 	replay     string
 	logs       bool
+	demo       bool
 }
 
 // app is a built server: its handler, whether it runs in the cluster (for the default
@@ -59,9 +61,9 @@ func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
 	var a app
 	var err error
 	if o.replay != "" {
-		a, err = startReplay(ctx, o.replay, o.logs, log)
+		a, err = startReplayOpts(ctx, o.replay, o.logs, o.demo, log)
 	} else {
-		a, err = startLive(ctx, o.kubeconfig, o.logs, log)
+		a, err = startLive(ctx, o.kubeconfig, o.logs, o.demo, log)
 	}
 	if err != nil {
 		return err
@@ -73,8 +75,12 @@ func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
 		return fmt.Errorf("listening on %s: %w", addr, err)
 	}
 	page := distFS()
-	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil, "logs", o.logs)
-	return serveHTTP(ctx, ln, stream.HostGuard(withPage(a.handler, page), o.addr))
+	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil, "logs", o.logs, "demo", o.demo)
+	h := withPage(a.handler, page)
+	if o.demo {
+		h = demo.LoopbackOrIAP(false, h)
+	}
+	return serveHTTP(ctx, ln, stream.HostGuard(h, o.addr))
 }
 
 // listenAddr is --addr when given, else the D26 default for where the binary runs.
@@ -119,6 +125,10 @@ func serveHTTP(ctx context.Context, ln net.Listener, h http.Handler) error {
 
 // startReplay loads the recording and plays it into a hub; no cluster is contacted (D14).
 func startReplay(ctx context.Context, path string, logs bool, log *slog.Logger) (app, error) {
+	return startReplayOpts(ctx, path, logs, false, log)
+}
+
+func startReplayOpts(ctx context.Context, path string, logs, demoMode bool, log *slog.Logger) (app, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return app{}, fmt.Errorf("opening recording: %w", err)
@@ -128,6 +138,7 @@ func startReplay(ctx context.Context, path string, logs bool, log *slog.Logger) 
 	if err != nil {
 		return app{}, fmt.Errorf("loading recording %s: %w", path, err)
 	}
+	rec.WithCapabilities(map[string]model.Capability{demo.SourceName: demo.Capability(demoMode)})
 	hub := stream.NewHub(stream.HubOptions{})
 	go func() {
 		if err := rec.Play(ctx, hub); err != nil {
@@ -138,8 +149,12 @@ func startReplay(ctx context.Context, path string, logs bool, log *slog.Logger) 
 	if logs {
 		logsSrc = stream.ReplayLogs{Hub: hub}
 	}
+	var demoHandler http.Handler
+	if demoMode {
+		demoHandler = demo.NewReplayServer(hub).Handler()
+	}
 	srv := &stream.Server{Hub: hub, Ready: func() bool { return true },
-		Objects: stream.ReplayObjects{Hub: hub}, Logs: logsSrc, LogsDisabled: !logs, Log: log}
+		Objects: stream.ReplayObjects{Hub: hub}, Logs: logsSrc, LogsDisabled: !logs, Demo: demoHandler, Log: log}
 	return app{handler: srv.Handler()}, nil
 }
 
@@ -147,7 +162,7 @@ func startReplay(ctx context.Context, path string, logs bool, log *slog.Logger) 
 // Kubernetes Events and causal chains into the hub, starts the metrics and Hubble collectors,
 // and returns the handler. Only a config or discovery failure is an error; every other source
 // degrades to its capability state (R4).
-func startLive(ctx context.Context, kubeconfig string, logs bool, log *slog.Logger) (app, error) {
+func startLive(ctx context.Context, kubeconfig string, logs, demoMode bool, log *slog.Logger) (app, error) {
 	cl, err := newClients(kubeconfig, log)
 	if err != nil {
 		return app{}, err
@@ -155,6 +170,7 @@ func startLive(ctx context.Context, kubeconfig string, logs bool, log *slog.Logg
 	cfg, inCluster, cs := cl.cfg, cl.inCluster, cl.cs
 	kc, kerr := kubeletClient(cfg, inCluster)
 	caps := probeCapabilities(ctx, cs, kc, kerr)
+	caps[demo.SourceName] = demo.Capability(demoMode)
 
 	hub := stream.NewHub(stream.HubOptions{})
 	m := model.New()
@@ -176,7 +192,13 @@ func startLive(ctx context.Context, kubeconfig string, logs bool, log *slog.Logg
 	startHubble(ctx, inCluster, cs, m, hub, w.Synced, log)
 
 	srv := newLiveServer(hub, w.Synced, m, cl, logs, log)
-	log.Info("watching", "host", cfg.Host, "inCluster", inCluster, "logs", logs)
+	if demoMode {
+		srv.Demo = demo.NewServer(demo.Options{
+			Catalog: &demo.ModelCatalog{Model: m, InCluster: inCluster},
+			Log:     log,
+		}).Handler()
+	}
+	log.Info("watching", "host", cfg.Host, "inCluster", inCluster, "logs", logs, "demo", demoMode)
 	return app{handler: srv.Handler(), inCluster: inCluster}, nil
 }
 

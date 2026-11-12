@@ -7,20 +7,19 @@
 
 ## Now
 
-### Phase 1 — Demo gate, `install-demo.yaml`, and controlled Service port proxy (`PLAN-2026-11-12-1113-plan-interactive-demo-mode-controlled-proxy-work`)
+### Phase 2 — Workload environment variable editor (`PLAN-2026-11-12-1113-plan-interactive-demo-mode-controlled-proxy-work`)
 
-Goal: Gate `/api/demo/*` behind `--demo` + loopback/SameOrigin/protected-namespace guards, ship `deploy/install-demo.yaml`, and proxy presenter-opened exposed Service ports inside a sandboxed in-app browser sheet.
+Goal: Let presenters in `--demo` mode inspect and update plain container env vars on `Deployment`, `StatefulSet`, and `DaemonSet` workloads (`409` conflict check; `valueFrom` Secret/ConfigMap/field refs preserved read-only; system namespaces `403`).
 
-- [ ] `--demo` flag, `"demo"` capability (live + replay), `LoopbackOrIAP` + `SameOrigin` + `IsProtectedNamespace` guards, and `deploy/install-demo.yaml` pinned both ways
-- [ ] Capability-token Service port gatekeeper (`/api/demo/ports`), SSRF-hardened reverse proxy + HTML path/form rewriter (`/api/demo/proxy/t/{token}/`), and `--replay --demo` handler
-- [ ] Panel proxy controls + sandboxed browser sheet + `test/e2e/fixtures/demo.mjs` + `test/e2e/demo-proxy.spec.ts`
+- [ ] `GET` & `PATCH /api/demo/workloads/env` for `Deployment`, `StatefulSet`, `DaemonSet` (plain `value` set/remove, `valueFrom` read-only preservation, `resourceVersion` `409`, protected-ns `403`, replay fake)
+- [ ] Panel env editor + `test/e2e/demo-env.spec.ts` (edit, add, Secret-backed var locked, stale `409` notice)
 - [ ] Checkpoint
 
 ## Next
 
-- Phase 2 — Workload environment variable editor (`Deployment`, `StatefulSet`, `DaemonSet`, `PLAN-2026-11-12-1113-plan-interactive-demo-mode-controlled-proxy-work`)
 - Phase 3 — Interactive pod exec terminal & live local `kind` demo verification (`PLAN-2026-11-12-1113-plan-interactive-demo-mode-controlled-proxy-work`)
 - Phase 4 — Google IAP authentication, `--allowed-host`, and `deploy/install-iap.yaml` (`PLAN-2026-11-12-1113-plan-interactive-demo-mode-controlled-proxy-work`)
+- Size-metric switch (`network | CPU | memory | pods`, `PRD.md` `C3`)
 
 ## Backlog
 

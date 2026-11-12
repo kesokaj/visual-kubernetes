@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 	"time"
 
@@ -190,6 +191,29 @@ func validEventName(s string) bool {
 		}
 	}
 	return true
+}
+
+// WithCapabilities merges runtime capabilities (for example "demo") into every snapshot event
+// in rec before Play publishes it (D10).
+func (rec *Recording) WithCapabilities(caps map[string]model.Capability) {
+	if len(caps) == 0 {
+		return
+	}
+	for si := range rec.steps {
+		for ei := range rec.steps[si].events {
+			snap, ok := rec.steps[si].events[ei].Data.(model.SnapshotData)
+			if !ok {
+				continue
+			}
+			merged := maps.Clone(snap.Capabilities)
+			if merged == nil {
+				merged = make(map[string]model.Capability, len(caps))
+			}
+			maps.Copy(merged, caps)
+			snap.Capabilities = merged
+			rec.steps[si].events[ei].Data = snap
+		}
+	}
 }
 
 // Play publishes the snapshot at once (the hub's view, and so /healthz and every snapshot,

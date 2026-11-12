@@ -1,6 +1,6 @@
 # visual-kubernetes
 
-A read-only, real-time visualizer of Kubernetes internals on one white page, for live teaching demos.
+A real-time visualizer of Kubernetes internals on one white page, built for live teaching demos on non-production clusters (read-only by default; opt-in `--demo` mode for interactive demo clusters).
 
 ## Install
 
@@ -20,6 +20,7 @@ The release asset pins the image by digest; [`deploy/install.yaml`](deploy/insta
 
 - **`kube-system` variant ([`deploy/install-kube-system.yaml`](deploy/install-kube-system.yaml)):** places the ServiceAccount, Deployment, ClusterIP Service and a pod-scoped deny-all-ingress NetworkPolicy (`app.kubernetes.io/name: visual-kubernetes`) in `kube-system` without touching the `kube-system` Namespace object (note GKE Autopilot forbids user workloads in `kube-system`). Reach it with `kubectl -n kube-system port-forward svc/visual-kubernetes 8080:80`.
 - **Opt-in LoadBalancer variant ([`deploy/install-lb.yaml`](deploy/install-lb.yaml)):** exposes the UI on a network `LoadBalancer` Service (`externalTrafficPolicy: Local`) with pod logs disabled (`--logs=false`), a fail-closed placeholder `loadBalancerSourceRanges` (`192.0.2.0/32`, RFC 5737 `TEST-NET-1`), and a matching `ipBlock` ingress `NetworkPolicy`. Download the manifest, replace `192.0.2.0/32` with your own client CIDR(s) (`sed -i.bak 's|192.0.2.0/32|<YOUR_IP>/32|g' install-lb.yaml`), and apply it. When switching back to `install.yaml`, run `kubectl delete -f install-lb.yaml` (or delete `networkpolicy/visual-kubernetes-lb-ingress`) first, because Kubernetes `NetworkPolicy` ingress rules are additive across policies in the same namespace.
+- **Opt-in interactive demo variant ([`deploy/install-demo.yaml`](deploy/install-demo.yaml), non-production demo clusters only):** runs with `--demo` behind the same `ClusterIP` Service (`kubectl port-forward`) and deny-all-ingress `NetworkPolicy`, adding narrow demo RBAC (`apps` `deployments`/`statefulsets`/`daemonsets` `patch`/`update` and `pods/exec` `create`/`get`, ADR-010). Do **not** apply `install-demo.yaml` to production clusters; without Google IAP (`--iap-audience`), `--demo` refuses non-loopback `Host` headers (`localhost`, `127.0.0.1`, `::1`, ADR-011).
 
 > [!WARNING]
 > **LoadBalancer exposure (`install-lb.yaml`):** The page has **no authentication**. Anyone inside `loadBalancerSourceRanges` can read every watched object in the cluster (Secrets are excluded; the pod's single named `hubble-relay-client-certs` Secret read is never served by `/api/objects`). Setting `0.0.0.0/0` (or `::/0`) makes the cluster's objects **public** to the internet. Source ranges hold only where the cluster's LoadBalancer implementation enforces `loadBalancerSourceRanges`, and `visual-kubernetes-lb-ingress` restricts TCP `8080` to the same `ipBlock` CIDR(s) using `externalTrafficPolicy: Local` so in-cluster pods cannot bypass the LoadBalancer ranges where the CNI enforces `NetworkPolicy` (if your cloud LoadBalancer SNATs client IPs or probes pod port `8080` directly instead of `healthCheckNodePort`, add its proxy/health-check CIDR under `spec.ingress[0].from`). Internal-only LoadBalancers require cloud-specific Service annotations (such as `networking.gke.io/load-balancer-type: "Internal"` on GKE), which are the operator's own edit before applying.
@@ -69,6 +70,7 @@ The panel shows, per object:
 - **API server:** every data source and its probe state (`ok`, `missing`, `denied`, `unreachable`, `error`), the same list `visual-kubernetes probe` prints.
 - **Inferred control-plane part (`cp/*`):** the evidence it was inferred from and the static pods folded behind it.
 - **Internet (globe, `ext/internet`):** drawn only when the cluster has an entrypoint (an Ingress, Gateway, LoadBalancer or NodePort Service); the panel lists those entrypoints. Hubble `reserved:world` flows and Prometheus flows with an external side draw particles from or to the globe.
+- **Interactive demo proxy (`--demo`, non-production only):** on exposed non-system apps/Services (and `ext/internet`), the panel adds an **Exposed ports · demo proxy** gatekeeper. Every port starts closed (`403`); clicking **Open in app** mints a revocable token and opens the Service inside an on-demand sandboxed in-app browser sheet (`<iframe sandbox="allow-scripts allow-forms">`), and **Close port** revokes it immediately.
 
 > [!WARNING]
 > Logs are the application's own output and can contain secrets (tokens, passwords, personal data). On installs with `--logs=true` (the default in `install.yaml` and `install-kube-system.yaml`), anyone who can open the page can read the last 200 lines of any pod's logs: treat a shared screen accordingly, keep ClusterIP installs behind `kubectl port-forward`, and leave `--logs=false` enabled on `install-lb.yaml`.
@@ -85,7 +87,7 @@ What the web encodes:
 
 ## Configuration
 
-No config file or environment settings. The binary takes flags: `--kubeconfig PATH` (local mode), `--addr HOST:PORT` (default `127.0.0.1:8080` locally, `:8080` in-cluster), `--replay FILE` (serve a recorded stream, no cluster) and `--logs` (default `true`; `--logs=false` makes `/api/logs` answer `403` and the panel say `"Pod logs are off on this install."`, as `deploy/install-lb.yaml` sets).
+No config file or environment settings. The binary takes flags: `--kubeconfig PATH` (local mode), `--addr HOST:PORT` (default `127.0.0.1:8080` locally, `:8080` in-cluster), `--replay FILE` (serve a recorded stream, no cluster), `--logs` (default `true`; `--logs=false` makes `/api/logs` answer `403` and the panel say `"Pod logs are off on this install."`, as `deploy/install-lb.yaml` sets), and `--demo` (default `false`; enables `/api/demo/*` for **non-production demo clusters only**, requiring loopback `Host` headers unless `--iap-audience` is configured).
 
 ## Deploy
 

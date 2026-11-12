@@ -256,3 +256,45 @@ func TestHealthz(t *testing.T) {
 		t.Errorf("healthz after sync = %d %q, want 200 ok", rec.Code, rec.Body.String())
 	}
 }
+
+func TestDemoMountDefaultClosedAndMounted(t *testing.T) {
+	hub := NewHub(HubOptions{})
+	publish(t, hub, model.Event{
+		Type: EventSnapshot,
+		Data: model.SnapshotData{
+			Entities: []model.Entity{{ID: "core/Service/shop/web", Kind: "Service"}},
+			Edges:    []model.Edge{{ID: "e1", From: "a", To: "b", Kind: model.EdgeRoutes}},
+		},
+	})
+	ents, edges := hub.Snapshot()
+	if len(ents) != 1 || ents[0].ID != "core/Service/shop/web" || len(edges) != 1 {
+		t.Fatalf("Hub.Snapshot() = %v, %v", ents, edges)
+	}
+
+	off := (&Server{Hub: hub, Ready: func() bool { return true }}).Handler()
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		for _, path := range []string{"/api/demo", "/api/demo/ports", "/api/demo/proxy/t/abc/"} {
+			req := httptest.NewRequest(method, path, nil)
+			rec := httptest.NewRecorder()
+			off.ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "demo mode is off on this install") {
+				t.Errorf("%s %s = %d %q, want 403 demo-off", method, path, rec.Code, rec.Body.String())
+			}
+			if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+				t.Errorf("%s %s: missing nosniff", method, path)
+			}
+		}
+	}
+
+	on := (&Server{
+		Hub:   hub,
+		Ready: func() bool { return true },
+		Demo: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			plain(w, http.StatusOK, "mounted:"+r.URL.Path)
+		}),
+	}).Handler()
+	if rec := get(t, on, "/api/demo/ports"); rec.Code != http.StatusOK || rec.Body.String() != "mounted:/api/demo/ports" {
+		t.Errorf("mounted /api/demo/ports = %d %q", rec.Code, rec.Body.String())
+	}
+}
+

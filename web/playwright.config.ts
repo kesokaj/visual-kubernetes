@@ -24,7 +24,9 @@ function server(name: ServerName) {
       ? `node test/e2e/fixtures/telemetry.mjs ${spec.fixture} && `
       : name === 'traffic'
         ? `node test/e2e/fixtures/traffic.mjs ${spec.fixture} && `
-        : ''
+        : name === 'demo'
+          ? `node test/e2e/fixtures/demo.mjs ${spec.fixture} && `
+          : ''
   return {
     command: `${gen}${run}`,
     cwd: '..',

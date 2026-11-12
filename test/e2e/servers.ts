@@ -22,6 +22,7 @@ export const SERVERS = {
   g3Scale: { port: 18087, fixture: 'test/fixtures/streams/g3-scale.ndjson' },
   traffic: { port: 18088, fixture: '.agents/scratch/e2e/traffic.ndjson' },
   logsOff: { port: 18089, fixture: 'test/fixtures/streams/deploy-scale.ndjson', args: '--logs=false' },
+  demo: { port: 18090, fixture: '.agents/scratch/e2e/demo.ndjson', args: '--demo' },
 } as const satisfies Record<string, ServerSpec>
 
 export type ServerName = keyof typeof SERVERS

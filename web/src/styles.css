@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './demo/demo.css';
 @import './panel/panel.css';
 @import './replay/replay.css';
 @import './web/web.css';

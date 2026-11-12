@@ -1,5 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
+import type { BrowseSession } from '../demo/api'
+import { BrowserSheet } from '../demo/BrowserSheet'
 import { FilterPill } from '../filter/FilterPill'
 import { defaultFilter, type FilterState } from '../filter/state'
 import { Sprite } from '../icons/sprite'
@@ -85,11 +87,15 @@ function Page() {
   const [fitNonce, setFitNonce] = useState(0)
   const [pill, setPill] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
+  const [browse, setBrowse] = useState<BrowseSession | null>(null)
   const { player, play } = useReplay(graph)
 
   useEffect(() => connect(graph, parseEvent), [graph])
   const [fitAgain] = useState(() => () => setFitNonce((n) => n + 1))
   const [close] = useState(() => () => setSelected(null))
+  const handlePortClosed = (serviceId: string, port: number) => {
+    setBrowse((cur) => (cur && cur.id === serviceId && cur.port === port ? null : cur))
+  }
   const controls = useRef<WebControls | null>(null)
   const [zoom] = useState(() => ({
     in: () => controls.current?.zoomBy(ZOOM_STEP),
@@ -100,6 +106,7 @@ function Page() {
     fit: fitAgain,
     pill: () => setPill((p) => !p),
     escape: () => {
+      setBrowse(null)
       close()
       player.clear()
     },
@@ -128,7 +135,18 @@ function Page() {
         controlsRef={controls}
       />
       {pill && <FilterPill graph={graph} filter={filter} onChange={changeFilter} zoom={zoom} />}
-      {selected && <Panel key={selected} graph={graph} id={selected} onClose={close} onSelect={setSelected} />}
+      {browse && <BrowserSheet session={browse} onClose={() => setBrowse(null)} />}
+      {selected && (
+        <Panel
+          key={selected}
+          graph={graph}
+          id={selected}
+          onClose={close}
+          onSelect={setSelected}
+          onBrowse={setBrowse}
+          onPortClosed={handlePortClosed}
+        />
+      )}
     </main>
   )
 }

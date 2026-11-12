@@ -213,3 +213,12 @@ func (h *Hub) Entity(id string) (model.Entity, bool) {
 	e, ok := h.view.entities[id]
 	return e, ok
 }
+
+// Snapshot returns the view's current entities and edges sorted by id.
+func (h *Hub) Snapshot() ([]model.Entity, []model.Edge) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	snap := h.view.snapshot()
+	return snap.Entities, snap.Edges
+}
+

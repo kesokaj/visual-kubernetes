@@ -20,6 +20,8 @@ const (
 	MaxLogBytes = 1 << 20
 	// LogsDisabledMessage is the 403 body when --logs=false (plan D38).
 	LogsDisabledMessage = "logs are off on this install"
+	// DemoDisabledMessage is the 403 body when --demo=false (ADR-010).
+	DemoDisabledMessage = "demo mode is off on this install"
 )
 
 // ErrNotFound is what an ObjectSource or LogSource returns for an id that is not in the view
@@ -53,20 +55,29 @@ type Server struct {
 	Ready        func() bool // the /healthz condition
 	Objects      ObjectSource
 	Logs         LogSource
-	LogsDisabled bool // --logs=false: /api/logs answers 403 (D38, ADR-008)
+	LogsDisabled bool         // --logs=false: /api/logs answers 403 (D38, ADR-008)
+	Demo         http.Handler // optional --demo handler mounted at /api/demo/; nil answers 403
 	Log          *slog.Logger
 	// Heartbeat is the idle-stream comment interval; DefaultHeartbeat when zero.
 	Heartbeat time.Duration
 }
 
-// Handler returns the mux: `/healthz`, `/api/stream`, `/api/objects`, `/api/logs`, and a
-// placeholder `/` until the embedded page lands (plan Phase 3).
+// Handler returns the mux: `/healthz`, `/api/stream`, `/api/objects`, `/api/logs`, `/api/demo/*`,
+// and a placeholder `/` until the embedded page lands (plan Phase 3).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /api/stream", s.handleStream)
 	mux.HandleFunc("GET /api/objects", s.handleObjects)
 	mux.HandleFunc("GET /api/logs", s.handleLogs)
+	demoHandler := s.Demo
+	if demoHandler == nil {
+		demoHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			plain(w, http.StatusForbidden, DemoDisabledMessage+"\n")
+		})
+	}
+	mux.Handle("/api/demo/", demoHandler)
+	mux.Handle("/api/demo", demoHandler)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
 		plain(w, http.StatusOK, "visual-kubernetes: the page arrives with the UI; the stream is at /api/stream\n")
 	})

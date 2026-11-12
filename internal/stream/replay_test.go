@@ -248,3 +248,32 @@ func TestChainReplaysTyped(t *testing.T) {
 		t.Errorf("ring entry = %s %s", last.Type, last.Data)
 	}
 }
+
+func TestRecordingWithCapabilities(t *testing.T) {
+	body := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{"readyz":{"state":"ok"}}}}` + "\n"
+	rec, err := LoadRecording(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.WithCapabilities(map[string]model.Capability{
+		"demo": {State: "ok", Detail: "interactive demo enabled"},
+	})
+	h := NewHub(HubOptions{})
+	publish(t, h, rec.steps[0].events...)
+	sub, err := h.Subscribe("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+	var snap model.SnapshotData
+	if err := json.Unmarshal(sub.Initial[0].Data, &snap); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Capabilities["readyz"].State != "ok" {
+		t.Errorf("existing readyz capability lost: %+v", snap.Capabilities)
+	}
+	if snap.Capabilities["demo"].State != "ok" || snap.Capabilities["demo"].Detail != "interactive demo enabled" {
+		t.Errorf("merged demo capability = %+v", snap.Capabilities["demo"])
+	}
+}
+

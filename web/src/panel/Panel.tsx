@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from 'react'
+import type { BrowseSession } from '../demo/api'
+import { ProxySection } from '../demo/ProxySection'
 import { Globe, Icon, iconFor } from '../icons/sprite'
 import type { Graph } from '../lib/graph'
 import type { Entity } from '../lib/wire'
@@ -26,12 +28,19 @@ function configId(e: Entity, role: Role): string | undefined {
   return role === 'app' ? e.ownerId : e.id
 }
 
-type Props = { graph: Graph; id: string; onClose: () => void; onSelect: (id: string) => void }
+type Props = {
+  graph: Graph
+  id: string
+  onClose: () => void
+  onSelect: (id: string) => void
+  onBrowse?: (session: BrowseSession) => void
+  onPortClosed?: (serviceId: string, port: number) => void
+}
 
 // Panel is the click panel: a right-hand sheet with what one object is and does now. Its
 // sections depend on the object (plan Phase 4): config, live Events, metrics, logs, node
 // conditions, the data sources on the API server. Esc, × or a click on empty space close it.
-export function Panel({ graph, id, onClose, onSelect }: Props) {
+export function Panel({ graph, id, onClose, onSelect, onBrowse, onPortClosed }: Props) {
   useSyncExternalStore(graph.subscribe, graph.getVersion, graph.getVersion)
   const e = graph.entities.get(id)
   const role = e ? roleOf(e) : 'sat'
@@ -44,11 +53,15 @@ export function Panel({ graph, id, onClose, onSelect }: Props) {
     )
   }
   const pods = role === 'app' ? podsOf(graph, e.id) : []
+  const demoEnabled = graph.caps['demo']?.state === 'ok'
   return (
     <aside className="panel" data-testid="panel" data-panel-for={id} data-panel-role={role}>
       <PanelHead title={e.name} sub={[e.kind, e.namespace].filter(Boolean).join(' · ')} kind={e.kind} app={role === 'app'} onClose={onClose} />
       <div className="p-body">
         <Summary graph={graph} e={e} role={role} pods={pods} />
+        {demoEnabled && onBrowse && onPortClosed && (
+          <ProxySection entity={e} role={role} onBrowse={onBrowse} onPortClosed={onPortClosed} />
+        )}
         {role === 'hub' && <CapabilitiesSection caps={graph.caps} />}
         {role === 'cp' && <Statics graph={graph} cpId={e.id} />}
         {role === 'node' && <ConditionsSection res={config} node={e} />}

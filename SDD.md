@@ -1,7 +1,7 @@
 # SDD — visual-kubernetes
 
-One Go binary watches the cluster read-only and streams a live model to a browser page that draws it as a moving web.
-Status: approved · Last updated: 2026-11-11 · Requirements: [PRD.md](PRD.md) · Technical design: [TDD.md](TDD.md)
+One Go binary watches a non-production teaching cluster read-only by default (with opt-in `--demo` mode for controlled Service proxying, ADR-010/ADR-011) and streams a live model to a browser page that draws it as a moving web.
+Status: approved · Last updated: 2026-11-12 · Requirements: [PRD.md](PRD.md) · Technical design: [TDD.md](TDD.md)
 
 <!-- The system design: the parts, their boundaries, the main flows and the big decisions — a summary a human reads
      in ten minutes. The detail lives in the records it links (an ADR per decision, a SPEC per surface), never
@@ -30,7 +30,8 @@ All v1 components of `PLAN-2026-11-09-1906-plan-visual-kubernetes-v1-live-spider
 | M2 | `internal/stream`, `internal/replay` | Serve SSE deltas with resume, decode recordings, the object/log endpoints (`--logs=false` 403 gate) and live + recorded causal chains | R5, R7 |
 | M3 | `web/` | The embedded spider-web page (white grid paper, label-aware spacing, self-hide, group & focus filters), click panel, teaching replay and traffic particles | R5, R6, R7, R9, R10, S3, S5 |
 | M4 | `internal/hubble` | Auto-detected Hubble Relay gRPC stream (Cilium plaintext, GKE DPv2 mTLS) + Prometheus pull fallback → per-edge `flow` SSE events | R1, R2, R4, S3 |
-| M5 | `deploy/`, `Dockerfile`, `examples/` | One-command default install (`install.yaml`), `kube-system` variant (`install-kube-system.yaml`) and opt-in LoadBalancer variant (`install-lb.yaml`, ADR-008), demo scenarios, local binary run | R1, R2, R3, R7, S1, S6, S7 |
+| M5 | `deploy/`, `Dockerfile`, `examples/` | One-command default install (`install.yaml`), `kube-system` variant (`install-kube-system.yaml`), opt-in LoadBalancer variant (`install-lb.yaml`, ADR-008), and opt-in non-production demo variant (`install-demo.yaml`, ADR-010), demo scenarios, local binary run | R1, R2, R3, R7, S1, S6, S7 |
+| M6 | `internal/demo`, `web/src/demo/` | Opt-in `--demo` guards (`LoopbackOrIAP`, `SameOrigin`, protected namespaces) and presenter-gated capability-token Service HTTP proxy (`/api/demo/ports`, `/api/demo/proxy/t/{token}/`) with sandboxed in-app browser sheet | R1, R4, R6, R7, R9, R10, S7 |
 
 ## Flows
 
@@ -51,11 +52,11 @@ flowchart LR
 
 ## Decisions
 
-ADR-001 (PRD v1), ADR-002 (SSE, not WebSocket), ADR-003 (SVG + d3-force with Canvas particles), ADR-004 (force web, no hierarchy bands), ADR-005 (kubelet Summary on :10250 with `nodes/stats`), ADR-006 (kubelet client only in-cluster), ADR-007 (R8–R10 enforced by named tests), ADR-008 (opt-in LoadBalancer variant with required source ranges and logs off), ADR-009 (PRD R6 UI polish amendment and v1 enforcement trace). List them with `fyr record list --kind adr`; smaller choices are the plan's D-rows.
+ADR-001 (PRD v1), ADR-002 (SSE, not WebSocket), ADR-003 (SVG + d3-force with Canvas particles), ADR-004 (force web, no hierarchy bands), ADR-005 (kubelet Summary on :10250 with `nodes/stats`), ADR-006 (kubelet client only in-cluster), ADR-007 (R8–R10 enforced by named tests), ADR-008 (opt-in LoadBalancer variant with required source ranges and logs off), ADR-009 (PRD R6 UI polish amendment and v1 enforcement trace), ADR-010 (opt-in `--demo` and `install-demo.yaml` keep default installs read-only), ADR-011 (loopback-only guard on `--demo` until Google IAP is configured). List them with `fyr record list --kind adr`; smaller choices are the plan's D-rows.
 
 ## Cross-cutting
 
-- **Security:** read-only RBAC with no Secrets. The UI and `/api/objects`, `/api/logs` have no auth, so the default Service is ClusterIP and is reached only through port-forward. The opt-in LoadBalancer variant (`deploy/install-lb.yaml`, ADR-008) ships fail-closed `loadBalancerSourceRanges` (`192.0.2.0/32`) that the operator replaces with their client CIDR(s) and runs with `--logs=false`; anyone inside those ranges can read every watched object. Run locally, the server binds 127.0.0.1 by default (plan D26), and a Host allowlist (IP literals, `localhost`, the `--addr` name) stops DNS rebinding through the presenter's browser; an LB IP passes it as an IP literal (D39). Kubelet TLS is always verified.
+- **Security:** default installs (`install.yaml`, `install-kube-system.yaml`, `install-lb.yaml`, `--demo=false`) use strictly read-only RBAC with no Secrets and answer `403` on `/api/demo/*`. The UI and `/api/objects`, `/api/logs` have no auth, so the default Service is ClusterIP and is reached only through port-forward. The opt-in LoadBalancer variant (`deploy/install-lb.yaml`, ADR-008) ships fail-closed `loadBalancerSourceRanges` (`192.0.2.0/32`) that the operator replaces with their client CIDR(s) and runs with `--logs=false`. When opt-in `--demo` (non-production teaching clusters only, `deploy/install-demo.yaml`, ADR-010/ADR-011) is enabled without `--iap-audience`, `LoopbackOrIAP` refuses non-loopback `Host` headers on every non-`/healthz` route, `SameOrigin` guards `POST /api/demo/ports`, system namespaces and selectorless Services are refused, in-cluster targets resolve ready non-`hostNetwork` selector-matched Pod `IP:targetPort` directly (bypassing virtual `ClusterIP` DNAT) while `SafeDialer` blocks loopback/link-local/metadata/API-server/Node IPs and kubelet `:10250`/`:10255` ports, and proxied HTML is isolated inside `Content-Security-Policy: sandbox allow-scripts allow-forms` with `Set-Cookie` and outbound presenter credentials stripped. Kubelet TLS is always verified.
 - **Observability:** JSON `log/slog` to stderr; nothing else yet.
 - **Cost:** one small pod in the cluster; the image is public in Artifact Registry (egress is billed to `exact-loon-6dim`).
 
@@ -75,22 +76,22 @@ One Deployment plus a ClusterRole, applied with one `kubectl apply -f install.ya
 
 | Requirement | Components |
 |---|---|
-| R1 | M1, M4, M5 |
+| R1 | M1, M4, M5, M6 |
 | R2 | M1, M4, M5 |
 | R3 | M5 |
-| R4 | M1, M4 |
+| R4 | M1, M4, M6 |
 | R5 | M2, M3 |
-| R6 | M3 |
-| R7 | M2, M3, M5 |
+| R6 | M3, M6 |
+| R7 | M2, M3, M5, M6 |
 | R8 | M1 |
-| R9 | M3 |
-| R10 | M3 |
+| R9 | M3, M6 |
+| R10 | M3, M6 |
 | S1 | M5 |
 | S2 | M1 |
 | S3 | M4 |
 | S4 | M1 |
 | S5 | M3 |
 | S6 | M5 |
-| S7 | M5 |
+| S7 | M5, M6 |
 
 </details>
