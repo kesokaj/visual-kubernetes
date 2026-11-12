@@ -22,8 +22,9 @@ function labelText(a: Anchor): { name: string; sub: string } {
   }
 }
 
-// bodyBottom is how far below its centre a body's drawing reaches, in world units.
-function bodyBottom(a: Anchor): number {
+// bodyBottom is how far below (and, symmetric, above) its centre a body's drawing reaches, in
+// world units.
+export function bodyBottom(a: Anchor): number {
   if (a.role !== 'app') return a.icon / 2
   return a.ring > 0 ? a.ring + POD_RING_OUT : a.sats.length > 0 ? a.satR + SIZE.sat / 2 : a.icon / 2
 }

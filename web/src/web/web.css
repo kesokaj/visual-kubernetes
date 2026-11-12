@@ -55,3 +55,10 @@
   outline: 2px solid var(--k8s);
   outline-offset: -2px;
 }
+
+/* Hover label (plan D6): a white card naming the object under the pointer; never takes the pointer. */
+.vk .hover-label rect {
+  fill: #fff;
+  stroke: var(--line);
+  filter: drop-shadow(0 1px 3px rgba(15, 23, 42, 0.14));
+}

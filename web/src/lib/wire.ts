@@ -60,7 +60,8 @@ export type Chain = { id: string; steps: Step[] }
 // Flow is one aggregated traffic sample on an edge (plan Interfaces § SSE events; internal/hubble).
 export const FLOW_VERDICTS = ['FORWARDED', 'DROPPED'] as const
 export type FlowVerdict = (typeof FLOW_VERDICTS)[number]
-export type Flow = { src: string; dst: string; verdict: FlowVerdict; bytes: number; count?: number }
+// via, when present, is the Service the traffic was addressed to: particles ride src → via → dst.
+export type Flow = { src: string; dst: string; via?: string; verdict: FlowVerdict; bytes: number; count?: number }
 
 export type StreamEvent =
   | { type: 'snapshot'; entities: Entity[]; edges: Edge[]; capabilities: Capabilities }
@@ -183,6 +184,7 @@ export function isFlow(v: unknown): v is Flow {
     isStr(v.dst) &&
     v.dst !== '' &&
     v.src !== v.dst &&
+    (v.via === undefined || (isStr(v.via) && v.via !== '' && v.via !== v.src && v.via !== v.dst)) &&
     (FLOW_VERDICTS as readonly unknown[]).includes(v.verdict) &&
     typeof v.bytes === 'number' &&
     Number.isFinite(v.bytes) &&
@@ -192,8 +194,11 @@ export function isFlow(v: unknown): v is Flow {
   )
 }
 
-function flowOf({ src, dst, verdict, bytes, count }: Flow): Flow {
-  return count === undefined ? { src, dst, verdict, bytes } : { src, dst, verdict, bytes, count }
+function flowOf({ src, dst, via, verdict, bytes, count }: Flow): Flow {
+  const f: Flow = { src, dst, verdict, bytes }
+  if (via !== undefined) f.via = via
+  if (count !== undefined) f.count = count
+  return f
 }
 
 // parseTelemetry covers the events that carry no entities: metrics, capabilities, Kubernetes

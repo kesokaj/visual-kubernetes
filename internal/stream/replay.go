@@ -144,11 +144,14 @@ func deref(v any) any {
 	return v
 }
 
-// validFlow rejects a flow the page could not draw: empty or self-loop endpoints, an unknown
-// verdict, or negative counters.
+// validFlow rejects a flow the page could not draw: empty or self-loop endpoints, a via equal to
+// either end, an unknown verdict, or negative counters.
 func validFlow(f hubble.Flow) error {
 	if f.Src == "" || f.Dst == "" || f.Src == f.Dst {
 		return errors.New("src and dst must name two distinct entities")
+	}
+	if f.Via != "" && (f.Via == f.Src || f.Via == f.Dst) {
+		return errors.New("via must differ from src and dst")
 	}
 	if f.Verdict != hubble.VerdictForwarded && f.Verdict != hubble.VerdictDropped {
 		return fmt.Errorf("unknown verdict %q", f.Verdict)

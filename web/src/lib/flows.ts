@@ -12,6 +12,7 @@ export type ActiveFlow = {
   key: string
   src: string
   dst: string
+  via?: string
   verdict: FlowVerdict
   rate: number
   acc: number
@@ -21,6 +22,7 @@ export type ActiveFlow = {
 export type Particle = {
   src: string
   dst: string
+  via?: string
   verdict: FlowVerdict
   t: number
   speed: number
@@ -29,6 +31,7 @@ export type Particle = {
 export type DropMark = {
   src: string
   dst: string
+  via?: string
   at: number
 }
 
@@ -79,6 +82,8 @@ export class Flows {
     for (const l of this.listeners) l()
   }
 
+  // The key stays per (src, dst, verdict): the backend sends one dominant via per pair, so the
+  // newest via replaces the old one instead of leaving a stale second edge for FLOW_TTL_MS.
   add(flow: Flow, now: number): void {
     const key = `${flow.src}->${flow.dst}:${flow.verdict}`
     const prev = this.edges.get(key)
@@ -86,6 +91,7 @@ export class Flows {
       key,
       src: flow.src,
       dst: flow.dst,
+      via: flow.via,
       verdict: flow.verdict,
       rate: particleRate(flow),
       // Seed acc = 1 on a newly active edge so the first particle spawns on the next frame.
@@ -127,7 +133,7 @@ export class Flows {
       e.acc -= spawn
       for (let i = 0; i < spawn && this.particles.length < MAX_PARTICLES; i++) {
         const speed = 0.42 + (this.seq++ % 5) * 0.03
-        this.particles.push({ src: e.src, dst: e.dst, verdict: e.verdict, t: 0, speed })
+        this.particles.push({ src: e.src, dst: e.dst, via: e.via, verdict: e.verdict, t: 0, speed })
       }
     }
     const kept: Particle[] = []
@@ -135,7 +141,7 @@ export class Flows {
       if (!canDraw(p.src, p.dst)) continue
       p.t += p.speed * dt
       if (p.verdict === 'DROPPED' && p.t >= DROP_AT) {
-        this.drops.push({ src: p.src, dst: p.dst, at: now })
+        this.drops.push({ src: p.src, dst: p.dst, via: p.via, at: now })
         continue
       }
       if (p.t < 1) kept.push(p)

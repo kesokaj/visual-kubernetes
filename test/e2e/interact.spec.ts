@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { WEB_APP } from './checks'
+import { smallText, WEB_APP } from './checks'
 import { urlOf } from './servers'
 
 // Grouping, neighbourhood fade, zoom controls and drag (plan PLAN-2026-11-11-1703, D1–D3, D7,
@@ -16,6 +16,21 @@ const web = (page: Page) => page.getByTestId('web')
 const body = (page: Page, id: string) => web(page).locator(`[data-layer="bodies"] > g[data-id="${id}"]`)
 const icon = (page: Page, id: string) => body(page, id).locator(':scope > use')
 const zoomOf = async (page: Page) => Number(await web(page).getAttribute('data-zoom'))
+// stableZoom is the zoom once a glide has landed (unchanged over 300 ms): a poll that passes
+// mid-glide would otherwise read a value the camera is still leaving (1.119 vs > 1.1258 flake).
+async function stableZoom(page: Page): Promise<number> {
+  let last = NaN
+  await expect
+    .poll(async () => {
+      const k = await zoomOf(page)
+      const still = Math.abs(k - last) < 0.0005
+      last = k
+      await page.waitForTimeout(300)
+      return still
+    })
+    .toBe(true)
+  return last
+}
 const labelX = async (page: Page, id: string) =>
   Number(await web(page).locator(`[data-label-for="${id}"] text.name`).getAttribute('x'))
 
@@ -121,11 +136,11 @@ test('zoom buttons, + / − keys and double-click zoom; Fit hands the camera bac
   await page.keyboard.press('-')
   await expect(web(page)).toHaveAttribute('data-auto', 'off')
   await expect.poll(() => zoomOf(page)).toBeLessThan(start * 0.8)
-  const out = await zoomOf(page)
+  const out = await stableZoom(page)
   await page.keyboard.press('+')
   await expect.poll(() => zoomOf(page)).toBeGreaterThan(out * 1.3)
 
-  const before = await zoomOf(page)
+  const before = await stableZoom(page)
   const at = await centre(icon(page, WEB_APP))
   await page.mouse.dblclick(at.x, at.y)
   await expect.poll(() => zoomOf(page)).toBeGreaterThan(before * 1.5)
@@ -172,4 +187,35 @@ test('the hub cannot be dragged: pressing it pans the whole web', async ({ page 
   // A pan moves the hub and the app alike; a hub drag would leave the pinned hub in place.
   await expect.poll(async () => (await labelX(page, HUB)) - hubX).toBeGreaterThan(120)
   expect(Math.abs((await labelX(page, WEB_APP)) - appX - ((await labelX(page, HUB)) - hubX))).toBeLessThan(20)
+})
+
+test('hover shows the name and kind of any object; leaving clears it', async ({ page }) => {
+  await ready(page)
+  await settle(page, WEB_APP)
+  const label = web(page).getByTestId('hover-label')
+  await expect(label).toHaveCount(0)
+
+  const pod = body(page, WEB_APP).locator('[data-role="pod"]').first()
+  const podId = await pod.getAttribute('data-id')
+  await pod.hover({ force: true })
+  await expect(label).toHaveAttribute('data-for', podId ?? '')
+  await expect(label).toContainText(podId?.split('/').pop() ?? '')
+  await expect(label).toContainText('Pod · shop')
+  expect(await smallText(page)).toEqual([]) // R10 holds with the card shown
+
+  await icon(page, WEB_APP).hover({ force: true })
+  await expect(label).toHaveAttribute('data-for', WEB_APP)
+  await expect(label).toContainText('Deployment · shop')
+
+  const svc = body(page, WEB_APP).locator('[data-role="sat"][data-kind="Service"]')
+  await svc.hover({ force: true })
+  await expect(label).toHaveAttribute('data-for', (await svc.getAttribute('data-id')) ?? '')
+  await expect(label).toContainText('Service · shop')
+
+  await body(page, HUB).locator(':scope > use').hover({ force: true })
+  await expect(label).toHaveAttribute('data-for', HUB)
+
+  const away = await emptyPoint(page)
+  await page.mouse.move(away.x, away.y)
+  await expect(label).toHaveCount(0)
 })

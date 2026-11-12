@@ -51,7 +51,7 @@ export function podPositions(a: Anchor, c: Pos): Pos[] {
 
 // satPositions puts app-owned satellites (Service, HPA, ConfigMap…) between the icon and the
 // pod ring.
-function satPositions(a: Anchor, c: Pos): Pos[] {
+export function satPositions(a: Anchor, c: Pos): Pos[] {
   const n = a.sats.length
   return a.sats.map((_, i) => {
     const t = -Math.PI / 4 + (i / Math.max(1, n)) * Math.PI * 2

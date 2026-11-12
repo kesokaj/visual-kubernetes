@@ -202,6 +202,29 @@ func TestFlowReplaysTyped(t *testing.T) {
 	}
 }
 
+// TestValidFlowVia: a via must name a third entity; a distinct via survives decoding.
+func TestValidFlowVia(t *testing.T) {
+	cases := []struct {
+		via  string
+		want bool
+	}{{"", true}, {"core/Service/s/b", true}, {"a", false}, {"b", false}}
+	for _, c := range cases {
+		err := validFlow(hubble.Flow{Src: "a", Dst: "b", Via: c.via, Verdict: hubble.VerdictForwarded})
+		if (err == nil) != c.want {
+			t.Errorf("via %q: err = %v, want ok=%v", c.via, err, c.want)
+		}
+	}
+	body := `{"atMs":0,"event":"snapshot","data":{"entities":[],"edges":[],"capabilities":{}}}` + "\n" +
+		`{"atMs":5,"event":"flow","data":{"src":"a","dst":"b","via":"core/Service/s/b","verdict":"FORWARDED","bytes":0}}`
+	rec, err := LoadRecording(strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fl, ok := rec.steps[1].events[0].Data.(hubble.Flow); !ok || fl.Via != "core/Service/s/b" {
+		t.Fatalf("flow decoded as %+v, want via kept", rec.steps[1].events[0].Data)
+	}
+}
+
 // TestChainReplaysTyped: a recorded chain is decoded as replay.Chain and reaches the hub's
 // ring with its steps intact.
 func TestChainReplaysTyped(t *testing.T) {

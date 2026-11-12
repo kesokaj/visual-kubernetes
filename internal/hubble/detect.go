@@ -42,6 +42,7 @@ const (
 type Flow struct {
 	Src     string `json:"src"`
 	Dst     string `json:"dst"`
+	Via     string `json:"via,omitempty"` // drawn Service the traffic was addressed to (D9)
 	Verdict string `json:"verdict"`
 	Bytes   int64  `json:"bytes"`
 	Count   int64  `json:"count,omitempty"`

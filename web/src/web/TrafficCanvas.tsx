@@ -1,7 +1,8 @@
 import type { RefObject } from 'react'
-import { curvePoint, DROP_AT, DROP_MS, flowCurve } from '../lib/flows'
+import { DROP_AT, DROP_MS } from '../lib/flows'
 import type { Graph } from '../lib/graph'
 import type { Camera } from './camera'
+import { flowPath, pathPoint, strokePath, viaPoint, type FlowPath } from './flowPath'
 import type { Body } from './layout'
 import { fadedBy, resolveAnchorId } from './neighborhood'
 import { posOf, type Pos } from './parts'
@@ -36,9 +37,15 @@ function endpointOf(id: string, v: View): { pos: Pos; sys: boolean; dimmed: bool
     : null
 }
 
+// pathOf routes src → dst through the via Service when the page draws it, else directly.
+function pathOf(from: Pos, to: Pos, via: string | undefined, v: View): FlowPath {
+  return flowPath(from, to, viaPoint(via, v.scene, v.graph, v.bodies))
+}
+
 function drawEdges(ctx: CanvasRenderingContext2D, v: View) {
   let flows = 0
   let drops = 0
+  let vias = 0
   ctx.lineWidth = 1.4
   for (const e of v.graph.flows.edges.values()) {
     const from = endpointOf(e.src, v)
@@ -46,18 +53,18 @@ function drawEdges(ctx: CanvasRenderingContext2D, v: View) {
     if (!from || !to) continue
     flows += 1
     if (e.verdict === 'DROPPED') drops += 1
-    const { a, b, c } = flowCurve(from.pos, to.pos)
+    const path = pathOf(from.pos, to.pos, e.via, v)
+    if (path.second) vias += 1
     ctx.setLineDash(e.verdict === 'DROPPED' ? [5, 4] : [])
     ctx.strokeStyle = e.verdict === 'DROPPED' ? '#fca5a5' : '#cbd5e1'
     ctx.globalAlpha =
       from.dimmed || to.dimmed ? 0.12 : from.sys ? 0.4 : e.verdict === 'DROPPED' ? 0.85 : 0.7
     ctx.beginPath()
-    ctx.moveTo(a.x, a.y)
-    ctx.quadraticCurveTo(c.x, c.y, b.x, b.y)
+    strokePath(ctx, path)
     ctx.stroke()
   }
   ctx.setLineDash([])
-  return { flows, drops }
+  return { flows, drops, vias }
 }
 
 function drawParticles(ctx: CanvasRenderingContext2D, v: View) {
@@ -65,7 +72,7 @@ function drawParticles(ctx: CanvasRenderingContext2D, v: View) {
     const from = endpointOf(p.src, v)
     const to = endpointOf(p.dst, v)
     if (!from || !to) continue
-    const pt = curvePoint(flowCurve(from.pos, to.pos), p.t)
+    const pt = pathPoint(pathOf(from.pos, to.pos, p.via, v), p.t)
     ctx.globalAlpha = from.dimmed || to.dimmed ? 0.14 : from.sys ? 0.4 : 0.95
     ctx.fillStyle = p.verdict === 'DROPPED' ? '#dc2626' : '#3b82f6'
     ctx.beginPath()
@@ -82,7 +89,7 @@ function drawDrops(ctx: CanvasRenderingContext2D, v: View, now: number) {
     const from = endpointOf(d.src, v)
     const to = endpointOf(d.dst, v)
     if (!from || !to) continue
-    const pt = curvePoint(flowCurve(from.pos, to.pos), DROP_AT)
+    const pt = pathPoint(pathOf(from.pos, to.pos, d.via, v), DROP_AT)
     const fade = Math.max(0, 1 - (now - d.at) / DROP_MS)
     ctx.globalAlpha = from.dimmed || to.dimmed ? fade * 0.18 : fade
     ctx.beginPath()
@@ -116,6 +123,7 @@ function paintFrame(
   ctx.globalAlpha = 1
   cv.dataset.flows = String(counts.flows)
   cv.dataset.drops = String(counts.drops)
+  cv.dataset.via = String(counts.vias)
 }
 
 // TrafficCanvas draws live traffic edges, particles and policy-drop marks on a 2D canvas over
@@ -131,5 +139,5 @@ export function TrafficCanvas({ graph, scene, bodies, camRef, size, visible, hl 
     visible,
     paint: (ctx, cv, sc, bd, cam, dpr, now) => paintFrame(graph, hl, ctx, cv, sc, bd, cam, dpr, now),
   })
-  return <canvas ref={cvRef} className="fx" data-testid="traffic-canvas" data-flows="0" data-drops="0" aria-hidden="true" />
+  return <canvas ref={cvRef} className="fx" data-testid="traffic-canvas" data-flows="0" data-drops="0" data-via="0" aria-hidden="true" />
 }

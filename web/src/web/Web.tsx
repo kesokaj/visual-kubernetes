@@ -4,6 +4,7 @@ import type { Graph } from '../lib/graph'
 import { Caption } from '../replay/Caption'
 import type { Play } from '../replay/player'
 import { Counters } from './Counters'
+import { HoverLabel } from './hoverLabel'
 import { Labels } from './labels'
 import { GridPaper, HaloDefs, Travels } from './marks'
 import { AnchorView, LinkView, posOf } from './parts'
@@ -78,6 +79,7 @@ export function Web({ graph, filter, fitNonce, selected, onSelect, play, control
           <Travels travels={travels} bodies={bodies} now={now} />
         </g>
         <Labels scene={scene} bodies={bodies} cam={cam} hl={hl} />
+        <HoverLabel id={hover} scene={scene} graph={graph} bodies={bodies} cam={cam} />
       </svg>
       <TrafficCanvas
         graph={graph}

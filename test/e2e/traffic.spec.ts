@@ -10,6 +10,7 @@ const WEB = 'app/vk-demo/Deployment/web'
 const API = 'app/vk-demo/Deployment/api'
 const CACHE = 'app/vk-demo/Deployment/cache'
 const INTERNET = 'ext/internet'
+const API_SVC = 'core/Service/vk-demo/api'
 
 test.use({ baseURL: urlOf('traffic') })
 
@@ -78,6 +79,37 @@ async function sampleEdgePixels(page: Page, srcId: string, dstId: string) {
   )
 }
 
+// bluePixelsNear counts forwarded-particle pixels on the canvas within r CSS px of the centre of
+// the drawn object id (here the Service satellite a via flow rides through).
+async function bluePixelsNear(page: Page, id: string, r: number): Promise<number> {
+  return page.evaluate(
+    ([sel, radius]) => {
+      const cv = document.querySelector<HTMLCanvasElement>('[data-testid="traffic-canvas"]')
+      const ctx = cv?.getContext('2d')
+      const el = document.querySelector<SVGGraphicsElement>(sel as string)
+      if (!cv || !ctx || !el || cv.width === 0) return -1
+      const cvRect = cv.getBoundingClientRect()
+      const s = cv.width / cvRect.width
+      const box = el.getBoundingClientRect()
+      const cx = (box.left + box.width / 2 - cvRect.left) * s
+      const cy = (box.top + box.height / 2 - cvRect.top) * s
+      const rr = Math.ceil((radius as number) * s)
+      const x0 = Math.max(0, Math.round(cx - rr))
+      const y0 = Math.max(0, Math.round(cy - rr))
+      const w = Math.min(cv.width - x0, rr * 2)
+      const h = Math.min(cv.height - y0, rr * 2)
+      if (w <= 0 || h <= 0) return -1
+      const img = ctx.getImageData(x0, y0, w, h).data
+      let blue = 0
+      for (let o = 0; o < img.length; o += 4) {
+        if (img[o + 3]! >= 100 && img[o + 2]! > 200 && img[o]! < 100) blue++
+      }
+      return blue
+    },
+    [`[data-layer="bodies"] [data-id="${id}"]`, r] as const,
+  )
+}
+
 async function nonEmptyCanvasPixels(page: Page): Promise<number> {
   return page.evaluate(() => {
     const cv = document.querySelector<HTMLCanvasElement>('[data-testid="traffic-canvas"]')
@@ -101,11 +133,12 @@ test('draws forwarded blue particles, red policy-drop particles, and clears when
   await expect(canvas).toHaveAttribute('data-flows', '4', { timeout: 10_000 })
   await expect(canvas).toHaveAttribute('data-drops', '1')
 
-  // Forwarded edge (web -> api) renders blue particles and zero red drop pixels.
+  // Forwarded edge (api -> cache) renders blue particles and zero red drop pixels. (web -> api
+  // rides through api's Service, so its particles leave the direct curve: tested below.)
   await expect
-    .poll(async () => (await sampleEdgePixels(page, WEB, API)).blue, { timeout: 5_000 })
+    .poll(async () => (await sampleEdgePixels(page, API, CACHE)).blue, { timeout: 5_000 })
     .toBeGreaterThan(0)
-  expect((await sampleEdgePixels(page, WEB, API)).red).toBe(0)
+  expect((await sampleEdgePixels(page, API, CACHE)).red).toBe(0)
 
   // Policy-dropped edge (web -> cache) renders red drop particles / marks.
   await expect
@@ -166,4 +199,67 @@ test('draws the internet globe with world traffic into its entrypoint, hidden wi
   await page.getByRole('switch', { name: 'Internet & ingress' }).click()
   await expect(globe).toHaveCount(0)
   await expect(page.getByTestId('traffic-canvas')).toHaveAttribute('data-flows', '3', { timeout: 5_000 })
+})
+
+test('traffic to a Service rides through its satellite', async ({ page }) => {
+  await page.goto('/')
+  const canvas = page.getByTestId('traffic-canvas')
+  await expect(canvas).toHaveAttribute('data-flows', '4', { timeout: 10_000 })
+  // web -> api carries via = api's Service, drawn as a satellite on api: one edge goes through it.
+  await expect(canvas).toHaveAttribute('data-via', '1')
+  await expect(page.locator(`[data-layer="bodies"] [data-id="${API_SVC}"]`)).toHaveAttribute('data-role', 'sat')
+  await expect.poll(() => bluePixelsNear(page, API_SVC, 12), { timeout: 5_000 }).toBeGreaterThan(0)
+  // Hovering the Service (drawn on api) keeps web, the other end of its flow, unfaded.
+  await page.locator(`[data-layer="bodies"] [data-id="${API_SVC}"]`).hover({ force: true })
+  // node-2 hosts nothing here, so it fades: proof the hover took effect before checking web.
+  await expect(page.locator(`[data-layer="bodies"] > g[data-id="core/Node/_/node-2"]`)).toHaveAttribute('data-faded', 'true')
+  await expect(page.locator(`[data-layer="bodies"] > g[data-id="${WEB}"]`)).not.toHaveAttribute('data-faded', 'true')
+})
+
+test('with Services off the via flow still draws, directly', async ({ page }) => {
+  await page.goto('/')
+  const canvas = page.getByTestId('traffic-canvas')
+  await expect(canvas).toHaveAttribute('data-via', '1', { timeout: 10_000 })
+  await page.locator('.f-pill').click()
+  await page.getByRole('switch', { name: 'Services & config' }).click()
+  await expect(page.locator(`[data-id="${API_SVC}"]`)).toHaveCount(0)
+  await expect(canvas).toHaveAttribute('data-flows', '4')
+  await expect(canvas).toHaveAttribute('data-via', '0')
+  await expect
+    .poll(async () => (await sampleEdgePixels(page, WEB, API)).blue, { timeout: 5_000 })
+    .toBeGreaterThan(0)
+})
+
+// Review finding (traffic-via): a standalone Service (no app, its own bubble) that only appears as
+// a flow's via must keep both ends of that flow lit when hovered. Hand-written stream (D45): the
+// recorded fixture's Service is a satellite of the flow's destination, which hides the bug.
+test('hovering a standalone via Service keeps both ends of its flow unfaded', async ({ page }) => {
+  const ent = (id: string, kind: string, name: string, filterGroup: string) =>
+    ({ id, kind, group: kind === 'Service' ? 'core' : 'apps', name, namespace: 'vk-demo', labels: {}, status: '', filterGroup })
+  const A = 'app/vk-demo/Deployment/a'
+  const B = 'app/vk-demo/Deployment/b'
+  const C = 'app/vk-demo/Deployment/c'
+  const SVC = 'core/Service/vk-demo/lone'
+  const snapshot = {
+    entities: [ent(A, 'Deployment', 'a', 'workloads'), ent(B, 'Deployment', 'b', 'workloads'),
+      ent(C, 'Deployment', 'c', 'workloads'), ent(SVC, 'Service', 'lone', 'servicesConfig')],
+    edges: [],
+  }
+  const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+  const flow = { src: A, dst: B, via: SVC, verdict: 'FORWARDED', bytes: 0, count: 5 }
+  await page.route('**/api/stream', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
+      body: `retry: 60000\n${frame('snapshot', snapshot)}${frame('flow', flow)}`,
+    }),
+  )
+  await page.goto('/')
+  const body = (id: string) => page.locator(`[data-layer="bodies"] > g[data-id="${id}"]`)
+  await expect(page.getByTestId('traffic-canvas')).toHaveAttribute('data-via', '1', { timeout: 5_000 })
+  await body(SVC).locator(':scope > use').hover({ force: true })
+  // Must-fail guard: the unrelated app fades, so "unfaded" below means kept, not "nothing fades".
+  await expect(body(C)).toHaveAttribute('data-faded', 'true')
+  await expect(body(A)).not.toHaveAttribute('data-faded', 'true')
+  await expect(body(B)).not.toHaveAttribute('data-faded', 'true')
 })

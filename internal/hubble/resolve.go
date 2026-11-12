@@ -20,14 +20,15 @@ type ModelReader interface {
 }
 
 type modelIndex struct {
-	model   ModelReader
-	drawn   map[string]model.Entity
-	podApp  map[string]string
-	appName map[string]string // "<ns>/<name>" -> drawn app or standalone Service id
+	model    ModelReader
+	drawn    map[string]model.Entity
+	podApp   map[string]string
+	appName  map[string]string   // "<ns>/<name>" -> drawn app or standalone Service id
+	services map[string][]string // drawn app id -> Services that front it (via.go)
 }
 
 func newIndex(m ModelReader) *modelIndex {
-	ents, _ := m.Snapshot()
+	ents, edges := m.Snapshot()
 	idx := &modelIndex{
 		model:   m,
 		drawn:   make(map[string]model.Entity, len(ents)),
@@ -54,6 +55,7 @@ func newIndex(m ModelReader) *modelIndex {
 			}
 		}
 	}
+	idx.services = appServices(idx.drawn, edges)
 	for _, e := range ents {
 		if e.Kind == "Service" && e.Group == model.CoreGroup && e.Namespace != "" {
 			key := e.Namespace + "/" + e.Name
@@ -143,6 +145,7 @@ type edgeBucket struct {
 	dropped int64
 	fwdIn   int64
 	fwdOut  int64
+	vias    map[string]int64 // Service id -> flows addressed through it (D1')
 }
 
 // Aggregator folds raw Hubble flows over one window into per-edge FORWARDED and DROPPED counts.
@@ -175,6 +178,12 @@ func (a *Aggregator) Add(f *flow.Flow, idx *modelIndex) {
 		b = &edgeBucket{}
 		a.buckets[edgePair{src, dst}] = b
 	}
+	if via := idx.via(f, src, dst); via != "" {
+		if b.vias == nil {
+			b.vias = map[string]int64{}
+		}
+		b.vias[via]++
+	}
 	if v == flow.Verdict_DROPPED {
 		b.dropped++
 		return
@@ -186,7 +195,7 @@ func (a *Aggregator) Add(f *flow.Flow, idx *modelIndex) {
 	}
 }
 
-// Flush drains the window and returns sorted Flow events. When an edge has DROPPED flows in the
+// Flush drains the window and returns sorted Flow events, each carrying its pair's dominant via. When an edge has DROPPED flows in the
 // window, sender-only EGRESS FORWARDED traces are suppressed so an ingress NetworkPolicy drop on
 // the destination does not also appear as forwarded traffic.
 func (a *Aggregator) Flush() []Flow {
@@ -206,15 +215,16 @@ func (a *Aggregator) Flush() []Flow {
 	out := make([]Flow, 0, len(pairs))
 	for _, p := range pairs {
 		b := a.buckets[p]
+		via := dominantVia(b.vias)
 		if b.dropped > 0 {
-			out = append(out, Flow{Src: p.src, Dst: p.dst, Verdict: VerdictDropped, Count: b.dropped})
+			out = append(out, Flow{Src: p.src, Dst: p.dst, Via: via, Verdict: VerdictDropped, Count: b.dropped})
 			if b.fwdIn > 0 {
-				out = append(out, Flow{Src: p.src, Dst: p.dst, Verdict: VerdictForwarded, Count: b.fwdIn})
+				out = append(out, Flow{Src: p.src, Dst: p.dst, Via: via, Verdict: VerdictForwarded, Count: b.fwdIn})
 			}
 			continue
 		}
 		if fwd := max(b.fwdIn, b.fwdOut); fwd > 0 {
-			out = append(out, Flow{Src: p.src, Dst: p.dst, Verdict: VerdictForwarded, Count: fwd})
+			out = append(out, Flow{Src: p.src, Dst: p.dst, Via: via, Verdict: VerdictForwarded, Count: fwd})
 		}
 	}
 	clear(a.buckets)

@@ -193,10 +193,11 @@ func TestAutoDetectCiliumPlaintextAggregatesFlows(t *testing.T) {
 	if caps[0].State != string(probe.OK) {
 		t.Fatalf("capability = %+v, want ok", caps[0])
 	}
+	// Each app has its one Service, so every flow is routed through it (D9 inference).
 	want := []Flow{
-		{Src: "app/vk-demo/Deployment/web", Dst: "app/vk-demo/Deployment/api", Verdict: VerdictForwarded, Count: 2},
-		{Src: "app/vk-demo/Deployment/web", Dst: "app/vk-demo/Deployment/cache", Verdict: VerdictDropped, Count: 1},
-		{Src: "app/vk-demo/Pod/probe-curl", Dst: "app/vk-demo/Deployment/web", Verdict: VerdictForwarded, Count: 1},
+		{Src: "app/vk-demo/Deployment/web", Dst: "app/vk-demo/Deployment/api", Via: "core/Service/vk-demo/api", Verdict: VerdictForwarded, Count: 2},
+		{Src: "app/vk-demo/Deployment/web", Dst: "app/vk-demo/Deployment/cache", Via: "core/Service/vk-demo/cache", Verdict: VerdictDropped, Count: 1},
+		{Src: "app/vk-demo/Pod/probe-curl", Dst: "app/vk-demo/Deployment/web", Via: "core/Service/vk-demo/web", Verdict: VerdictForwarded, Count: 1},
 	}
 	if !slices.Equal(flows[:3], want) {
 		t.Fatalf("flows = %+v, want %+v", flows, want)
@@ -421,6 +422,7 @@ func TestAbsentRelayAndPrometheusFallback(t *testing.T) {
 		if caps[0].State != string(probe.Missing) {
 			t.Fatalf("hubble capability = %+v, want missing", caps[0])
 		}
+		// Prometheus never sets via (D3).
 		want := []Flow{
 			{Src: "app/vk-demo/Deployment/api", Dst: "app/vk-demo/Deployment/cache", Verdict: VerdictForwarded, Count: 2},
 			{Src: "app/vk-demo/Deployment/web", Dst: "app/vk-demo/Deployment/api", Verdict: VerdictForwarded, Count: 3},

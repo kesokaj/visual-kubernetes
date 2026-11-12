@@ -18,7 +18,7 @@ export function resolveAnchorId(id: string, scene: Scene, graph: Graph): string 
 
 // neighborhood is the set of anchor ids that work together with id (the hovered or selected
 // object): its own body, every body one link away, the routes/parent chain upstream of those,
-// both ends of every live traffic edge touching it, and the hub. null means "no neighbourhood":
+// both ends (and the via Service's anchor) of every live traffic edge touching it, and the hub. null means "no neighbourhood":
 // nothing is focused, or id is not drawn, so nothing fades.
 export function neighborhood(scene: Scene, graph: Graph, id: string | null): Set<string> | null {
   if (!id) return null
@@ -33,9 +33,12 @@ export function neighborhood(scene: Scene, graph: Graph, id: string | null): Set
   for (const e of graph.flows.edges.values()) {
     const src = resolveAnchorId(e.src, scene, graph)
     const dst = resolveAnchorId(e.dst, scene, graph)
-    if (!src || !dst || (src !== self && dst !== self)) continue
+    // The via Service counts as touching the edge too: a standalone Service lights both ends.
+    const via = e.via ? resolveAnchorId(e.via, scene, graph) : null
+    if (!src || !dst || (src !== self && dst !== self && via !== self)) continue
     hl.add(src)
     hl.add(dst)
+    if (via) hl.add(via)
   }
   return hl
 }

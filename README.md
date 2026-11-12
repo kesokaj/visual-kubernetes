@@ -79,7 +79,8 @@ What the web encodes:
 - **Halo:** the three busiest apps by that measure.
 - **Pulse:** a ring when an app is created or changes status (a scale), or one of its pods is added, removed or changes status (for example on a restart).
 - **Travel:** a pod newly placed on a node moves along that node's thread to its app before taking its place on the ring.
-- **Traffic:** when Hubble Relay (Cilium or GKE Dataplane V2) or an in-cluster Prometheus flow series is available, curved edges carry blue particles for forwarded flows and red particles plus `×` marks for `NetworkPolicy` drops.
+- **Traffic:** when Hubble Relay (Cilium or GKE Dataplane V2) or an in-cluster Prometheus flow series is available, curved edges carry blue particles for forwarded flows and red particles plus `×` marks for `NetworkPolicy` drops. Traffic addressed to a Service rides through that Service's bubble or satellite on its way to the app (from Hubble's `destination_service`, or inferred from the app's only Service or the one whose target port matches, so it works under kube-proxy too).
+- **Hover:** pointing at any object shows its name and what it is (`Kind · namespace`).
 - **Corner counters:** what is not drawn one by one: apps and pods folded on large clusters, unreferenced ConfigMaps, and anything over the 150-bubble budget. Static control-plane pods (`kube-apiserver-*`, `etcd-*`, …) fold behind their `cp/*` part when the cluster exposes one.
 
 ## Configuration

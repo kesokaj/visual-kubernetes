@@ -2,7 +2,8 @@
 // (`web`, `api`, `cache` in `vk-demo`) with Hubble Relay ok and steady per-edge `flow` events
 // (`FORWARDED` on `web -> api` and `api -> cache`, `DROPPED` on `web -> cache`) every second
 // for ten minutes, plus an Ingress in front of `web` with the model's `ext/internet` globe routing
-// to it and a FORWARDED world flow `ext/internet -> web` (plan Phase 2c). Deterministic: the same file on every run. Usage:
+// to it and a FORWARDED world flow `ext/internet -> web` (plan Phase 2c). `api` owns the Service
+// `api` and `web -> api` carries `via` it, so its particles ride through the satellite (D10). Deterministic: the same file on every run. Usage:
 //   node test/e2e/fixtures/traffic.mjs <out.ndjson>
 // The output belongs in .agents/scratch/ (web/playwright.config.ts does that).
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -36,6 +37,9 @@ const entities = [
     appId: 'app/vk-demo/Deployment/web',
   }),
   ent('ext/internet', 'Internet', 'ext', 'internet', '', 'ingress', { status: '1 entrypoint' }),
+  ent('core/Service/vk-demo/api', 'Service', 'core', 'api', 'vk-demo', 'servicesConfig', {
+    appId: 'app/vk-demo/Deployment/api',
+  }),
 ]
 const edge = (kind, from, to) => ({ id: `${kind}:${from}->${to}`, kind, from, to })
 const edges = [
@@ -62,7 +66,7 @@ const lines = [
   },
 ]
 const flows = [
-  { src: 'app/vk-demo/Deployment/web', dst: 'app/vk-demo/Deployment/api', verdict: 'FORWARDED', bytes: 0, count: 12 },
+  { src: 'app/vk-demo/Deployment/web', dst: 'app/vk-demo/Deployment/api', via: 'core/Service/vk-demo/api', verdict: 'FORWARDED', bytes: 0, count: 12 },
   { src: 'app/vk-demo/Deployment/api', dst: 'app/vk-demo/Deployment/cache', verdict: 'FORWARDED', bytes: 0, count: 9 },
   { src: 'app/vk-demo/Deployment/web', dst: 'app/vk-demo/Deployment/cache', verdict: 'DROPPED', bytes: 0, count: 6 },
   { src: 'ext/internet', dst: 'app/vk-demo/Deployment/web', verdict: 'FORWARDED', bytes: 0, count: 8 },
