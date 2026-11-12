@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import type { BrowseSession } from '../demo/api'
+import type { BrowseSession, ExecSession } from '../demo/api'
 import { BrowserSheet } from '../demo/BrowserSheet'
+import { ExecDrawer } from '../demo/ExecDrawer'
 import { FilterPill } from '../filter/FilterPill'
 import { defaultFilter, type FilterState } from '../filter/state'
 import { Sprite } from '../icons/sprite'
@@ -88,6 +89,7 @@ function Page() {
   const [pill, setPill] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
   const [browse, setBrowse] = useState<BrowseSession | null>(null)
+  const [execSession, setExecSession] = useState<ExecSession | null>(null)
   const { player, play } = useReplay(graph)
 
   useEffect(() => connect(graph, parseEvent), [graph])
@@ -106,6 +108,7 @@ function Page() {
     fit: fitAgain,
     pill: () => setPill((p) => !p),
     escape: () => {
+      setExecSession(null)
       setBrowse(null)
       close()
       player.clear()
@@ -136,6 +139,7 @@ function Page() {
       />
       {pill && <FilterPill graph={graph} filter={filter} onChange={changeFilter} zoom={zoom} />}
       {browse && <BrowserSheet session={browse} onClose={() => setBrowse(null)} />}
+      {execSession && <ExecDrawer session={execSession} onClose={() => setExecSession(null)} />}
       {selected && (
         <Panel
           key={selected}
@@ -145,6 +149,7 @@ function Page() {
           onSelect={setSelected}
           onBrowse={setBrowse}
           onPortClosed={handlePortClosed}
+          onOpenExec={setExecSession}
         />
       )}
     </main>

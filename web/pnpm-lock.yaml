@@ -172,6 +172,9 @@ importers:
       '@tanstack/react-start':
         specifier: ^1.169.5
         version: 1.169.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(rolldown@1.2.18)(vite@8.3.7(@types/node@26.6.6)(jiti@2.7.0))
+      '@xterm/xterm':
+        specifier: ^6.0.0
+        version: 6.0.0
       d3-force:
         specifier: ^3.0.0
         version: 3.0.1
@@ -796,6 +799,9 @@ packages:
         optional: true
       oxc-transform-react:
         optional: true
+
+  '@xterm/xterm@6.0.0':
+    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   ansis@4.5.0:
     resolution: {integrity: sha512-KwIVkfFfJSSzBmZhDGuTmkhWqTdyB5oNVzzznBJbBZ5bZtHiqSrcugRF0RKJKT4Ss3d7ZrcjnlFVDlQNmtWfWw==}
@@ -1780,6 +1786,8 @@ snapshots:
     dependencies:
       '@rolldown/pluginutils': 1.1.0
       vite: 8.3.7(@types/node@26.6.6)(jiti@2.7.0)
+
+  '@xterm/xterm@6.0.0': {}
 
   ansis@4.5.0: {}
 

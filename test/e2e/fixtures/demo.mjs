@@ -60,6 +60,14 @@ const entities = [
     status: 'ClusterIP',
     appId: 'app/shop/Deployment/worker',
   }),
+  ent('app/shop/StatefulSet/db', 'StatefulSet', 'apps', 'db', 'shop', 'workloads', {
+    status: '1/1 ready',
+    ownerId: 'apps/StatefulSet/shop/db',
+  }),
+  ent('app/shop/DaemonSet/agent', 'DaemonSet', 'apps', 'agent', 'shop', 'workloads', {
+    status: '1/1 ready',
+    ownerId: 'apps/DaemonSet/shop/agent',
+  }),
   ent('app/kube-system/Deployment/coredns', 'Deployment', 'apps', 'coredns', 'kube-system', 'system', {
     status: '1/1 ready',
     ownerId: 'apps/Deployment/kube-system/coredns',
@@ -81,6 +89,8 @@ const edges = [
   edge('member', 'cp/apiserver', 'core/Node/_/node-1'),
   edge('hosts', 'core/Node/_/node-1', 'app/shop/Deployment/web'),
   edge('hosts', 'core/Node/_/node-1', 'app/shop/Deployment/worker'),
+  edge('hosts', 'core/Node/_/node-1', 'app/shop/StatefulSet/db'),
+  edge('hosts', 'core/Node/_/node-1', 'app/shop/DaemonSet/agent'),
   edge('hosts', 'core/Node/_/node-1', 'app/kube-system/Deployment/coredns'),
   edge('routes', 'ext/internet', 'app/shop/Deployment/web'),
 ]

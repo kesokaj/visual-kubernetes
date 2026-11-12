@@ -394,7 +394,7 @@ func TestDemoProxyReplayHandler(t *testing.T) {
 			},
 		},
 	})
-	h := NewReplayServer(hub).Handler()
+	h := NewReplayServer(hub, false).Handler()
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, sameOriginPost("/api/demo/ports", `{"namespace":"shop","service":"web","port":80,"open":true}`))

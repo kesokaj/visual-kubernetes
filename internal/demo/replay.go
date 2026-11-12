@@ -13,11 +13,14 @@ import (
 )
 
 // NewReplayServer builds a demo Server backed by the recorded stream in hub and a deterministic
-// in-memory HTML upstream (D10).
-func NewReplayServer(hub *stream.Hub) *Server {
+// in-memory HTML upstream (D10), with explicit IAP host-unlock state.
+func NewReplayServer(hub *stream.Hub, iapEnabled bool) *Server {
 	return NewServer(Options{
-		Catalog:   &ReplayCatalog{Hub: hub},
-		Transport: ReplayTransport(),
+		Catalog:    &ReplayCatalog{Hub: hub},
+		Workloads:  &ReplayWorkloads{Hub: hub},
+		Exec:       &ReplayExec{Hub: hub},
+		Transport:  ReplayTransport(),
+		IAPEnabled: iapEnabled,
 	})
 }
 

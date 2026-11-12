@@ -45,15 +45,17 @@ async function centre(l: Locator) {
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
 }
 
-// settle waits until the web stops moving (label x unchanged over 400 ms).
+// settle waits until the web stops moving (label screen position unchanged over 400 ms).
 async function settle(page: Page, id: string) {
-  let last = NaN
+  let last = { x: NaN, y: NaN }
+  const label = web(page).locator(`[data-label-for="${id}"] text.name`)
   await expect
     .poll(
       async () => {
-        const x = await labelX(page, id)
-        const still = Math.abs(x - last) < 0.5
-        last = x
+        const x = Number(await label.getAttribute('x'))
+        const y = Number(await label.getAttribute('y'))
+        const still = Math.hypot(x - last.x, y - last.y) < 0.5
+        last = { x, y }
         await page.waitForTimeout(400)
         return still
       },
@@ -91,6 +93,7 @@ test('each app with riders draws one group disc and a tether spoke per pod and s
 
 test('hover fades what does not work with the app; a click keeps it; Esc clears it', async ({ page }) => {
   await ready(page)
+  await settle(page, WEB_APP)
   const faded = web(page).locator('[data-faded="true"]')
   await expect(faded).toHaveCount(0)
 

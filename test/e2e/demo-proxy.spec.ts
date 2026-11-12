@@ -6,6 +6,8 @@ const web = (page: Page) => page.getByTestId('web')
 const panel = (page: Page) => page.getByTestId('panel')
 
 async function clickBody(page: Page, id: string) {
+  const close = panel(page).getByRole('button', { name: 'Close panel' })
+  if (await close.isVisible()) await close.click()
   await web(page).locator(`[data-layer="bodies"] > g[data-id="${id}"] > use`).first().click()
 }
 
@@ -84,7 +86,7 @@ test.describe('interactive demo controlled proxy (--demo)', () => {
     await expect(panel(page).locator('[data-section="demo-proxy"]')).toHaveCount(0)
 
     // Internet globe lists all exposed cluster Service ports.
-    await web(page).locator('[data-layer="bodies"] > g[data-id="ext/internet"]').click({ force: true })
+    await web(page).locator('[data-layer="bodies"] > g[data-id="ext/internet"] > g.globe').click()
     await expect(panel(page).locator('[data-section="demo-proxy"] li[data-demo-port="shop/web:80"]')).toHaveCount(1)
 
     // Select exposed shop/web app and open port 80 in the sandboxed browser sheet.

@@ -261,4 +261,3 @@ func hasExposedPort(ports []PortEntry, ns, service string, port int32) bool {
 	}
 	return false
 }
-

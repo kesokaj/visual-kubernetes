@@ -276,4 +276,3 @@ func TestRecordingWithCapabilities(t *testing.T) {
 		t.Errorf("merged demo capability = %+v", snap.Capabilities["demo"])
 	}
 }
-

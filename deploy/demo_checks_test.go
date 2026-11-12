@@ -135,8 +135,14 @@ func TestInstallDemoRBAC(t *testing.T) {
 		"pods-portforward":   addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/portforward"}, Verbs: []string{"create"}}),
 		"services-proxy":     addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"services/proxy"}, Verbs: []string{"get"}}),
 		"nodes-proxy":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes/proxy"}, Verbs: []string{"get"}}),
-		"aggregation-rule":   func(objs []runtime.Object) []runtime.Object { role(objs).AggregationRule = &rbacv1.AggregationRule{}; return objs },
-		"wrong-subject":      func(objs []runtime.Object) []runtime.Object { binding(objs).Subjects[0].Namespace = "default"; return objs },
+		"aggregation-rule": func(objs []runtime.Object) []runtime.Object {
+			role(objs).AggregationRule = &rbacv1.AggregationRule{}
+			return objs
+		},
+		"wrong-subject": func(objs []runtime.Object) []runtime.Object {
+			binding(objs).Subjects[0].Namespace = "default"
+			return objs
+		},
 	})
 }
 
@@ -144,18 +150,43 @@ func TestInstallDemoPodServiceAndNetworkPolicy(t *testing.T) {
 	inst := decodeFile(t, installPath)
 	checkFileBothWays(t, demoPath, demoPodViolations(container(inst).Image), map[string]mutation{
 		"missing-demo-arg": func(objs []runtime.Object) []runtime.Object { container(objs).Args = nil; return objs },
-		"demo-false-arg":   func(objs []runtime.Object) []runtime.Object { container(objs).Args = []string{"--demo=false"}; return objs },
-		"extra-logs-false": func(objs []runtime.Object) []runtime.Object { container(objs).Args = []string{"--demo", "--logs=false"}; return objs },
-		"missing-psa":      func(objs []runtime.Object) []runtime.Object { delete(only[*corev1.Namespace](objs)[0].Labels, "pod-security.kubernetes.io/enforce"); return objs },
-		"run-as-root":      func(objs []runtime.Object) []runtime.Object { dep, _ := appPod(objs); dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = nil; return objs },
-		"wrong-image":      func(objs []runtime.Object) []runtime.Object { container(objs).Image = imageRepo + ":v9.9.9"; return objs },
+		"demo-false-arg": func(objs []runtime.Object) []runtime.Object {
+			container(objs).Args = []string{"--demo=false"}
+			return objs
+		},
+		"extra-logs-false": func(objs []runtime.Object) []runtime.Object {
+			container(objs).Args = []string{"--demo", "--logs=false"}
+			return objs
+		},
+		"missing-psa": func(objs []runtime.Object) []runtime.Object {
+			delete(only[*corev1.Namespace](objs)[0].Labels, "pod-security.kubernetes.io/enforce")
+			return objs
+		},
+		"run-as-root": func(objs []runtime.Object) []runtime.Object {
+			dep, _ := appPod(objs)
+			dep.Spec.Template.Spec.SecurityContext.RunAsNonRoot = nil
+			return objs
+		},
+		"wrong-image": func(objs []runtime.Object) []runtime.Object {
+			container(objs).Image = imageRepo + ":v9.9.9"
+			return objs
+		},
 	})
 	checkFileBothWays(t, demoPath, serviceViolationsIn(appName), map[string]mutation{
-		"loadbalancer": func(objs []runtime.Object) []runtime.Object { service(objs).Spec.Type = corev1.ServiceTypeLoadBalancer; return objs },
-		"nodeport":     func(objs []runtime.Object) []runtime.Object { service(objs).Spec.Type = corev1.ServiceTypeNodePort; return objs },
+		"loadbalancer": func(objs []runtime.Object) []runtime.Object {
+			service(objs).Spec.Type = corev1.ServiceTypeLoadBalancer
+			return objs
+		},
+		"nodeport": func(objs []runtime.Object) []runtime.Object {
+			service(objs).Spec.Type = corev1.ServiceTypeNodePort
+			return objs
+		},
 	})
 	checkFileBothWays(t, demoPath, ingressViolations, map[string]mutation{
-		"no-policy":     without[*networkingv1.NetworkPolicy],
-		"allow-ingress": func(objs []runtime.Object) []runtime.Object { policy(objs).Spec.Ingress = []networkingv1.NetworkPolicyIngressRule{{}}; return objs },
+		"no-policy": without[*networkingv1.NetworkPolicy],
+		"allow-ingress": func(objs []runtime.Object) []runtime.Object {
+			policy(objs).Spec.Ingress = []networkingv1.NetworkPolicyIngressRule{{}}
+			return objs
+		},
 	})
 }

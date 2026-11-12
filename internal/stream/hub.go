@@ -221,4 +221,3 @@ func (h *Hub) Snapshot() ([]model.Entity, []model.Edge) {
 	snap := h.view.snapshot()
 	return snap.Entities, snap.Edges
 }
-

@@ -116,6 +116,7 @@ func TestRunDemoFlagEnabledAndLoopbackGuard(t *testing.T) {
 		{"/healthz", http.StatusOK},
 		{"/", http.StatusForbidden},
 		{"/api/demo/ports", http.StatusForbidden},
+		{"/api/demo/workloads/env?id=apps/Deployment/shop/web", http.StatusForbidden},
 	} {
 		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+addr+tc.path, nil)
 		req.Host = "10.244.0.5:8080"
@@ -128,5 +129,43 @@ func TestRunDemoFlagEnabledAndLoopbackGuard(t *testing.T) {
 		if r.StatusCode != tc.want {
 			t.Errorf("Host 10.244.0.5:8080 GET %s = %d, want %d", tc.path, r.StatusCode, tc.want)
 		}
+	}
+}
+
+func TestRunDemoWorkloadEnvEndpoint(t *testing.T) {
+	offAddr := startTestRun(t)
+	offResp, err := http.Get("http://" + offAddr + "/api/demo/workloads/env?id=apps/Deployment/shop/web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, offResp.Body)
+	_ = offResp.Body.Close()
+	if offResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("--demo=false GET /api/demo/workloads/env = %d, want 403", offResp.StatusCode)
+	}
+
+	addr := startTestRun(t, "--demo")
+	getResp, err := http.Get("http://" + addr + "/api/demo/workloads/env?id=apps/Deployment/shop/web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(getResp.Body)
+	_ = getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK || !strings.Contains(string(getBody), `"resourceVersion":"1"`) {
+		t.Fatalf("--demo GET /api/demo/workloads/env = %d %q, want 200 rv=1", getResp.StatusCode, string(getBody))
+	}
+
+	patchBody := `{"id":"apps/Deployment/shop/web","resourceVersion":"1","container":"web","env":[{"name":"LOG_LEVEL","value":"debug"}]}`
+	patchReq, _ := http.NewRequestWithContext(t.Context(), http.MethodPatch, "http://"+addr+"/api/demo/workloads/env", strings.NewReader(patchBody))
+	patchReq.Header.Set("Origin", "http://"+addr)
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchedBytes, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK || !strings.Contains(string(patchedBytes), `"resourceVersion":"2"`) {
+		t.Fatalf("--demo PATCH /api/demo/workloads/env = %d %q, want 200 rv=2", patchResp.StatusCode, string(patchedBytes))
 	}
 }

@@ -7,9 +7,10 @@ import (
 )
 
 // HostGuard refuses requests whose Host header names anything but an IP literal, `localhost`
-// or one of extra (the --addr host when it is a name). The server has no auth (R7, ADR-008):
-// default installs rely on loopback and port-forward (and install-lb.yaml on source-range
-// filtering at the LoadBalancer IP), so a page in the presenter's browser could otherwise
+// or one of extra (the --addr host when it is a name, plus any --allowed-host names). Default
+// installs have no auth (R7, ADR-008; opt-in --iap-audience layers Google IAP verification below
+// HostGuard for --allowed-host names, ADR-011), relying on loopback and port-forward (or
+// source-range filtering on install-lb.yaml), so a page in the presenter's browser could otherwise
 // rebind its own DNS name to 127.0.0.1 and read the stream, objects and logs as same-origin
 // (DNS rebinding). An attacker controls only names, never which IP literal the browser sends,
 // so IP hosts stay allowed; that also keeps the LoadBalancer IP (D39) and the kubelet's

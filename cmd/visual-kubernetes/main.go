@@ -24,14 +24,16 @@ import (
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
 )
 
-const usage = `usage: visual-kubernetes [--kubeconfig PATH] [--addr ADDR] [--replay FILE] [--logs=true|false] [--demo]
+const usage = `usage: visual-kubernetes [--kubeconfig PATH] [--addr ADDR] [--replay FILE] [--logs=true|false] [--demo] [--allowed-host HOSTS] [--iap-audience AUD]
        visual-kubernetes probe [--kubeconfig PATH]
 
 (default)  watch the cluster and serve /api/stream, /api/objects, /api/logs and /healthz;
            --addr defaults to 127.0.0.1:8080 outside a cluster and :8080 inside one;
            --replay FILE plays a recorded NDJSON stream instead of contacting any cluster;
            --logs=false disables /api/logs with 403 (used by install-lb.yaml);
-           --demo enables interactive demo endpoints (/api/demo/*) for non-production clusters only
+           --demo enables interactive demo endpoints (/api/demo/*) for non-production clusters only;
+           --allowed-host HOSTS allows comma-separated DNS Host names alongside localhost and IP literals;
+           --iap-audience AUD requires a signed Google IAP JWT (/projects/<NUMBER>/...) on every UI and API route
 probe      print one line per data source: <source> ok|missing|denied|unreachable|error <detail>
 `
 
@@ -57,9 +59,19 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, log *slog
 	fs.StringVar(&o.replay, "replay", "", "serve a recorded NDJSON stream instead of a cluster")
 	fs.BoolVar(&o.logs, "logs", true, "serve pod logs on /api/logs (set false on shared LoadBalancer installs)")
 	fs.BoolVar(&o.demo, "demo", false, "enable interactive demo endpoints (/api/demo/*); non-production demo clusters only")
+	fs.StringVar(&o.allowedHost, "allowed-host", "", "comma-separated extra DNS Host names allowed alongside localhost and IP literals")
+	fs.StringVar(&o.iapAudience, "iap-audience", "", "Google IAP JWT audience (/projects/<PROJECT_NUMBER>/...) required on UI and API routes")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "iap-audience":
+			o.iapAudienceSet = true
+		case "allowed-host":
+			o.allowedHostSet = true
+		}
+	})
 	if fs.NArg() > 0 || (o.replay != "" && o.kubeconfig != "") {
 		fs.Usage()
 		return 2

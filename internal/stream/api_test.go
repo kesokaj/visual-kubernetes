@@ -207,9 +207,9 @@ func TestLogsDisabledAnswers403(t *testing.T) {
 	called := false
 	logs := &fakeLogs{}
 	h := (&Server{
-		Hub:          NewHub(HubOptions{}),
-		Objects:      fakeObjects{id: "core/Pod/ns/a"},
-		Logs:         logSourceFunc(func(ctx context.Context, pod model.Ref, container string, tail int64) (io.ReadCloser, error) {
+		Hub:     NewHub(HubOptions{}),
+		Objects: fakeObjects{id: "core/Pod/ns/a"},
+		Logs: logSourceFunc(func(ctx context.Context, pod model.Ref, container string, tail int64) (io.ReadCloser, error) {
 			called = true
 			return logs.Logs(ctx, pod, container, tail)
 		}),
@@ -297,4 +297,3 @@ func TestDemoMountDefaultClosedAndMounted(t *testing.T) {
 		t.Errorf("mounted /api/demo/ports = %d %q", rec.Code, rec.Body.String())
 	}
 }
-

@@ -88,30 +88,53 @@ func isForbiddenIP(ip netip.Addr, extra []netip.Addr) bool {
 
 // Options configures a demo Server.
 type Options struct {
-	Catalog    Catalog
-	Dialer     *SafeDialer
-	Transport  http.RoundTripper
-	IAPEnabled bool
-	Log        *slog.Logger
+	Catalog         Catalog
+	Workloads       WorkloadStore
+	Exec            PodExecutor
+	MaxExecSessions int
+	ExecIdleTimeout time.Duration
+	ExecMaxLifetime time.Duration
+	Dialer          *SafeDialer
+	Transport       http.RoundTripper
+	IAPEnabled      bool
+	Log             *slog.Logger
 }
 
 // Server serves /api/demo/* when --demo is enabled.
 type Server struct {
-	catalog    Catalog
-	gate       *gatekeeper
-	transport  http.RoundTripper
-	iapEnabled bool
-	log        *slog.Logger
+	catalog         Catalog
+	workloads       WorkloadStore
+	exec            PodExecutor
+	execGate        *execGate
+	execIdleTimeout time.Duration
+	execMaxLifetime time.Duration
+	gate            *gatekeeper
+	transport       http.RoundTripper
+	iapEnabled      bool
+	log             *slog.Logger
 }
 
 // NewServer constructs an interactive demo server with all ports initially closed.
 func NewServer(o Options) *Server {
+	idle := o.ExecIdleTimeout
+	if idle <= 0 {
+		idle = defaultExecIdleTimeout
+	}
+	life := o.ExecMaxLifetime
+	if life <= 0 {
+		life = defaultExecMaxLifetime
+	}
 	s := &Server{
-		catalog:    o.Catalog,
-		gate:       newGatekeeper(),
-		transport:  o.Transport,
-		iapEnabled: o.IAPEnabled,
-		log:        o.Log,
+		catalog:         o.Catalog,
+		workloads:       o.Workloads,
+		exec:            o.Exec,
+		execGate:        newExecGate(o.MaxExecSessions),
+		execIdleTimeout: idle,
+		execMaxLifetime: life,
+		gate:            newGatekeeper(),
+		transport:       o.Transport,
+		iapEnabled:      o.IAPEnabled,
+		log:             o.Log,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -139,6 +162,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/demo/ports", s.handleGetPorts)
 	mux.Handle("POST /api/demo/ports", SameOrigin(http.HandlerFunc(s.handlePostPorts)))
+	mux.HandleFunc("GET /api/demo/workloads/env", s.handleGetWorkloadEnv)
+	mux.Handle("PATCH /api/demo/workloads/env", SameOrigin(http.HandlerFunc(s.handlePatchWorkloadEnv)))
+	mux.HandleFunc("GET /api/demo/exec", s.handleExec)
 	mux.HandleFunc(ProxyPrefix, s.handleProxy)
 	mux.HandleFunc("/api/demo/", func(w http.ResponseWriter, _ *http.Request) {
 		writePlain(w, http.StatusNotFound, "not found")
@@ -301,4 +327,3 @@ func (g *gatekeeper) lookupToken(tok string) (portKey, bool) {
 	k, ok := g.byToken[tok]
 	return k, ok
 }
-

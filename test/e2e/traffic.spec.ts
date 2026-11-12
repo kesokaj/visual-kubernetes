@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { foreignRequests, recordCspViolations, recordRequests, smallText } from './checks'
 import { urlOf } from './servers'
 
@@ -13,6 +13,24 @@ const INTERNET = 'ext/internet'
 const API_SVC = 'core/Service/vk-demo/api'
 
 test.use({ baseURL: urlOf('traffic') })
+
+// settle waits until an SVG target is inside the viewport and its screen box stops moving across
+// a 300 ms window (both d3-force layout and camera auto-fit settled) before a forced pointer step.
+async function settle(page: Page, target: Locator) {
+  await expect
+    .poll(
+      async () => {
+        const a = await target.boundingBox()
+        if (!a || a.width === 0 || a.height === 0) return false
+        await page.waitForTimeout(300)
+        const b = await target.boundingBox()
+        if (!b || b.width === 0 || b.height === 0) return false
+        return b.x + b.width / 2 > 0 && b.y + b.height / 2 > 0 && Math.hypot(b.x - a.x, b.y - a.y) < 0.5
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true)
+}
 
 async function sampleEdgePixels(page: Page, srcId: string, dstId: string) {
   return page.evaluate(
@@ -159,7 +177,9 @@ test('draws forwarded blue particles, red policy-drop particles, and clears when
   await expect.poll(() => nonEmptyCanvasPixels(page), { timeout: 5_000 }).toBeGreaterThan(0)
 
   // API hub panel preserves snapshot capabilities across partial hubble-relay updates, and R9/R10 hold.
-  await page.getByTestId('web').locator('[data-id="cp/apiserver"]').click({ force: true })
+  const hub = page.getByTestId('web').locator('[data-id="cp/apiserver"] > use')
+  await settle(page, hub)
+  await hub.click({ force: true })
   await expect(page.getByTestId('panel')).toContainText('14 groups')
   await expect(page.getByTestId('panel')).toContainText('hubble-relay')
   await expect(page.getByTestId('panel')).toContainText('relay streaming')
@@ -182,7 +202,9 @@ test('draws the internet globe with world traffic into its entrypoint, hidden wi
     .toBeGreaterThan(0)
 
   // The globe opens a panel listing what it reaches, without a config fetch.
-  await globe.click({ force: true })
+  const globeIcon = globe.locator('[data-icon="globe"]')
+  await settle(page, globeIcon)
+  await globeIcon.click({ force: true })
   const panel = page.getByTestId('panel')
   await expect(panel).toHaveAttribute('data-panel-role', 'ext')
   await expect(panel.locator(`[data-entrypoint="${WEB}"]`)).toHaveCount(1)
@@ -207,10 +229,14 @@ test('traffic to a Service rides through its satellite', async ({ page }) => {
   await expect(canvas).toHaveAttribute('data-flows', '4', { timeout: 10_000 })
   // web -> api carries via = api's Service, drawn as a satellite on api: one edge goes through it.
   await expect(canvas).toHaveAttribute('data-via', '1')
-  await expect(page.locator(`[data-layer="bodies"] [data-id="${API_SVC}"]`)).toHaveAttribute('data-role', 'sat')
-  await expect.poll(() => bluePixelsNear(page, API_SVC, 12), { timeout: 5_000 }).toBeGreaterThan(0)
+  const apiSvc = page.locator(`[data-layer="bodies"] [data-id="${API_SVC}"]`)
+  await expect(apiSvc).toHaveAttribute('data-role', 'sat')
+  const apiSvcIcon = apiSvc.locator(':scope > use')
+  await settle(page, apiSvcIcon)
+  // A particle crosses the 24 px window in ~115 ms, so sample at 50 ms instead of 1000 ms backoff.
+  await expect.poll(() => bluePixelsNear(page, API_SVC, 12), { timeout: 5_000, intervals: [50] }).toBeGreaterThan(0)
   // Hovering the Service (drawn on api) keeps web, the other end of its flow, unfaded.
-  await page.locator(`[data-layer="bodies"] [data-id="${API_SVC}"]`).hover({ force: true })
+  await apiSvcIcon.hover({ force: true })
   // node-2 hosts nothing here, so it fades: proof the hover took effect before checking web.
   await expect(page.locator(`[data-layer="bodies"] > g[data-id="core/Node/_/node-2"]`)).toHaveAttribute('data-faded', 'true')
   await expect(page.locator(`[data-layer="bodies"] > g[data-id="${WEB}"]`)).not.toHaveAttribute('data-faded', 'true')
@@ -257,7 +283,9 @@ test('hovering a standalone via Service keeps both ends of its flow unfaded', as
   await page.goto('/')
   const body = (id: string) => page.locator(`[data-layer="bodies"] > g[data-id="${id}"]`)
   await expect(page.getByTestId('traffic-canvas')).toHaveAttribute('data-via', '1', { timeout: 5_000 })
-  await body(SVC).locator(':scope > use').hover({ force: true })
+  const svcIcon = body(SVC).locator(':scope > use')
+  await settle(page, svcIcon)
+  await svcIcon.hover({ force: true })
   // Must-fail guard: the unrelated app fades, so "unfaded" below means kept, not "nothing fades".
   await expect(body(C)).toHaveAttribute('data-faded', 'true')
   await expect(body(A)).not.toHaveAttribute('data-faded', 'true')

@@ -20,6 +20,7 @@ import (
 
 	"github.com/kesokaj/visual-kubernetes/internal/demo"
 	"github.com/kesokaj/visual-kubernetes/internal/hubble"
+	"github.com/kesokaj/visual-kubernetes/internal/iapauth"
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/probe"
 	"github.com/kesokaj/visual-kubernetes/internal/replay"
@@ -42,11 +43,16 @@ const requestTimeout = 15 * time.Second
 
 // serveOptions are the flags of the default command.
 type serveOptions struct {
-	kubeconfig string
-	addr       string
-	replay     string
-	logs       bool
-	demo       bool
+	kubeconfig     string
+	addr           string
+	replay         string
+	logs           bool
+	demo           bool
+	allowedHost    string
+	allowedHostSet bool
+	iapAudience    string
+	iapAudienceSet bool
+	iapValidator   iapauth.Validator // nil uses iapauth.NewDefaultValidator
 }
 
 // app is a built server: its handler, whether it runs in the cluster (for the default
@@ -58,12 +64,19 @@ type app struct {
 
 // runServe builds the live or replay app, listens and serves until ctx ends.
 func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
+	allowedHosts, err := parseAllowedHosts(o.allowedHost, o.allowedHostSet)
+	if err != nil {
+		return err
+	}
+	iapMW, iapEnabled, err := resolveIAPMiddleware(ctx, o, allowedHosts, log)
+	if err != nil {
+		return err
+	}
 	var a app
-	var err error
 	if o.replay != "" {
-		a, err = startReplayOpts(ctx, o.replay, o.logs, o.demo, log)
+		a, err = startReplayFull(ctx, o.replay, o.logs, o.demo, iapEnabled, log)
 	} else {
-		a, err = startLive(ctx, o.kubeconfig, o.logs, o.demo, log)
+		a, err = startLiveFull(ctx, o.kubeconfig, o.logs, o.demo, iapEnabled, log)
 	}
 	if err != nil {
 		return err
@@ -75,12 +88,16 @@ func runServe(ctx context.Context, o serveOptions, log *slog.Logger) error {
 		return fmt.Errorf("listening on %s: %w", addr, err)
 	}
 	page := distFS()
-	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil, "logs", o.logs, "demo", o.demo)
+	log.Info("serving", "addr", ln.Addr().String(), "replay", o.replay != "", "page", page != nil, "logs", o.logs, "demo", o.demo, "iap", iapEnabled)
 	h := withPage(a.handler, page)
 	if o.demo {
-		h = demo.LoopbackOrIAP(false, h)
+		h = demo.LoopbackOrIAP(iapEnabled, h)
 	}
-	return serveHTTP(ctx, ln, stream.HostGuard(h, o.addr))
+	if iapMW != nil {
+		h = iapMW(h)
+	}
+	hostExtra := append([]string{o.addr}, allowedHosts...)
+	return serveHTTP(ctx, ln, stream.HostGuard(h, hostExtra...))
 }
 
 // listenAddr is --addr when given, else the D26 default for where the binary runs.
@@ -125,10 +142,14 @@ func serveHTTP(ctx context.Context, ln net.Listener, h http.Handler) error {
 
 // startReplay loads the recording and plays it into a hub; no cluster is contacted (D14).
 func startReplay(ctx context.Context, path string, logs bool, log *slog.Logger) (app, error) {
-	return startReplayOpts(ctx, path, logs, false, log)
+	return startReplayFull(ctx, path, logs, false, false, log)
 }
 
 func startReplayOpts(ctx context.Context, path string, logs, demoMode bool, log *slog.Logger) (app, error) {
+	return startReplayFull(ctx, path, logs, demoMode, false, log)
+}
+
+func startReplayFull(ctx context.Context, path string, logs, demoMode, iapEnabled bool, log *slog.Logger) (app, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return app{}, fmt.Errorf("opening recording: %w", err)
@@ -151,7 +172,7 @@ func startReplayOpts(ctx context.Context, path string, logs, demoMode bool, log 
 	}
 	var demoHandler http.Handler
 	if demoMode {
-		demoHandler = demo.NewReplayServer(hub).Handler()
+		demoHandler = demo.NewReplayServer(hub, iapEnabled).Handler()
 	}
 	srv := &stream.Server{Hub: hub, Ready: func() bool { return true },
 		Objects: stream.ReplayObjects{Hub: hub}, Logs: logsSrc, LogsDisabled: !logs, Demo: demoHandler, Log: log}
@@ -163,6 +184,10 @@ func startReplayOpts(ctx context.Context, path string, logs, demoMode bool, log 
 // and returns the handler. Only a config or discovery failure is an error; every other source
 // degrades to its capability state (R4).
 func startLive(ctx context.Context, kubeconfig string, logs, demoMode bool, log *slog.Logger) (app, error) {
+	return startLiveFull(ctx, kubeconfig, logs, demoMode, false, log)
+}
+
+func startLiveFull(ctx context.Context, kubeconfig string, logs, demoMode, iapEnabled bool, log *slog.Logger) (app, error) {
 	cl, err := newClients(kubeconfig, log)
 	if err != nil {
 		return app{}, err
@@ -194,11 +219,14 @@ func startLive(ctx context.Context, kubeconfig string, logs, demoMode bool, log 
 	srv := newLiveServer(hub, w.Synced, m, cl, logs, log)
 	if demoMode {
 		srv.Demo = demo.NewServer(demo.Options{
-			Catalog: &demo.ModelCatalog{Model: m, InCluster: inCluster},
-			Log:     log,
+			Catalog:    &demo.ModelCatalog{Model: m, InCluster: inCluster},
+			Workloads:  &demo.KubeWorkloads{Client: cs, Log: log},
+			Exec:       &demo.KubeExec{Model: m, Client: cs, ExecCfg: cl.execCfg, Log: log},
+			IAPEnabled: iapEnabled,
+			Log:        log,
 		}).Handler()
 	}
-	log.Info("watching", "host", cfg.Host, "inCluster", inCluster, "logs", logs, "demo", demoMode)
+	log.Info("watching", "host", cfg.Host, "inCluster", inCluster, "logs", logs, "demo", demoMode, "iap", iapEnabled)
 	return app{handler: srv.Handler(), inCluster: inCluster}, nil
 }
 
@@ -269,6 +297,7 @@ func startHubble(ctx context.Context, inCluster bool, cs kubernetes.Interface, m
 // clients are the API clients of a live run.
 type clients struct {
 	cfg       *rest.Config // carries requestTimeout
+	execCfg   *rest.Config // untimed copy for interactive pods/exec streams (D8)
 	inCluster bool
 	cs        kubernetes.Interface
 	dyn       dynamic.Interface // object reads for /api/objects
@@ -281,10 +310,11 @@ func newClients(kubeconfig string, log *slog.Logger) (clients, error) {
 		return clients{}, fmt.Errorf("loading cluster config: %w", err)
 	}
 	cfg.WarningHandler = &apiWarnings{log: log}
-	// Watches must not carry a client timeout: it would end every watch after that long.
+	// Watches and pods/exec must not carry a client timeout: it would end every stream after 15s (D8).
 	watchCfg := rest.CopyConfig(cfg)
+	execCfg := rest.CopyConfig(cfg)
 	cfg.Timeout = requestTimeout
-	cl := clients{cfg: cfg, inCluster: inCluster}
+	cl := clients{cfg: cfg, execCfg: execCfg, inCluster: inCluster}
 	if cl.cs, err = kubernetes.NewForConfig(cfg); err != nil {
 		return clients{}, fmt.Errorf("building client: %w", err)
 	}

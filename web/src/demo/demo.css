@@ -166,3 +166,147 @@
   border: 0;
   background: #fff;
 }
+
+.vk .demo-env-containers {
+  margin-bottom: 8px;
+}
+
+.vk .chip.active {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.vk .demo-conflict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.vk .demo-ok {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 12px;
+}
+
+.vk .demo-env-empty {
+  margin: 0 0 8px;
+}
+
+.vk .demo-env-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vk .demo-env-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.vk .demo-env-row.locked {
+  justify-content: space-between;
+  background: #f1f5f9;
+}
+
+.vk .demo-env-key {
+  font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--ink);
+  min-width: 96px;
+  overflow-wrap: anywhere;
+}
+
+.vk .demo-env-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 4px 8px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.vk .demo-env-input.name {
+  flex: 0 0 128px;
+}
+
+.vk .demo-env-input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.vk .demo-env-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vk .demo-exec-launch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vk .demo-exec-drawer {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: min(760px, calc(100vw - 488px));
+  min-width: 360px;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.vk .demo-exec-banner {
+  padding: 6px 14px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.vk .demo-exec-term {
+  padding: 10px 12px;
+  background: #0f172a;
+  min-height: 280px;
+  font-size: 13px;
+}
+
+/* Enforce >= 12px across all xterm helper, accessibility, and scrollbar nodes (PRD R10). */
+.vk .xterm,
+.vk .xterm .xterm-accessibility-tree,
+.vk .xterm .xterm-accessibility-tree > div,
+.vk .xterm .xterm-scrollable-element > .scrollbar > .scra {
+  font-size: 13px !important;
+}
