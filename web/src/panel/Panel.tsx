@@ -1,8 +1,11 @@
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import type { BrowseSession, ExecSession } from '../demo/api'
+import { AutoscalerSection } from '../demo/AutoscalerSection'
 import { EnvSection } from '../demo/EnvSection'
 import { ExecSection } from '../demo/ExecSection'
 import { ProxySection } from '../demo/ProxySection'
+import { ScaleSection } from '../demo/ScaleSection'
+import { ServiceTypeSection } from '../demo/ServiceTypeSection'
 import { Globe, Icon, iconFor } from '../icons/sprite'
 import type { Graph } from '../lib/graph'
 import type { Entity } from '../lib/wire'
@@ -45,6 +48,7 @@ type Props = {
 // conditions, the data sources on the API server. Esc, × or a click on empty space close it.
 export function Panel({ graph, id, onClose, onSelect, onBrowse, onPortClosed, onOpenExec }: Props) {
   useSyncExternalStore(graph.subscribe, graph.getVersion, graph.getVersion)
+  const [portRefreshNonce, setPortRefreshNonce] = useState(0)
   const e = graph.entities.get(id)
   const role = e ? roleOf(e) : 'sat'
   const config = useText(e ? objectUrl(configId(e, role)) : null)
@@ -63,11 +67,27 @@ export function Panel({ graph, id, onClose, onSelect, onBrowse, onPortClosed, on
       <div className="p-body">
         <Summary graph={graph} e={e} role={role} pods={pods} />
         {demoEnabled && onBrowse && onPortClosed && (
-          <ProxySection entity={e} role={role} onBrowse={onBrowse} onPortClosed={onPortClosed} />
+          <ProxySection
+            entity={e}
+            role={role}
+            refreshNonce={portRefreshNonce}
+            onBrowse={onBrowse}
+            onPortClosed={onPortClosed}
+          />
         )}
+        {demoEnabled && (
+          <ServiceTypeSection
+            graph={graph}
+            entity={e}
+            role={role}
+            onTypeChanged={() => setPortRefreshNonce((n) => n + 1)}
+          />
+        )}
+        {demoEnabled && <ScaleSection entity={e} role={role} />}
+        {demoEnabled && <AutoscalerSection graph={graph} entity={e} role={role} />}
         {demoEnabled && <EnvSection entity={e} />}
         {demoEnabled && onOpenExec && (
-          <ExecSection entity={e} role={role} pods={pods} onOpenExec={onOpenExec} />
+          <ExecSection graph={graph} entity={e} role={role} pods={pods} onOpenExec={onOpenExec} />
         )}
         {role === 'hub' && <CapabilitiesSection caps={graph.caps} />}
         {role === 'cp' && <Statics graph={graph} cpId={e.id} />}

@@ -7,19 +7,16 @@
 
 ## Now
 
-### Phase 2 — Click-panel UI editors, `ExecSection` clarity, Playwright e2e, live kind smoke, and docs (`PLAN-2026-11-13-1117-plan-demo-panel-controls-for-service-type-worklo`)
-Goal: ship click-panel UI controls (`ServiceTypeSection`, `ScaleSection`, `AutoscalerSection`), `ExecSection` status clarity and `Service`/`Node` pod launch chips, offline Playwright e2e (`demo-config.spec.ts` + `demo-exec.spec.ts`), live `kind` smoke checks (`demo-smoke.sh`), and documentation updates.
-
-- [ ] Add typed client helpers (`web/src/demo/api.ts`), `ServiceTypeSection.tsx` (`useServiceType.ts`), `ScaleSection.tsx` (`useWorkloadScale.ts`), `AutoscalerSection.tsx` (`useAutoscaler.ts`), and `ExecSection.tsx` status/satellite/node improvements, wired into `web/src/panel/Panel.tsx` and `ProxySection.tsx` refresh/`BrowserSheet` close — verify: build, `pnpm -C web build && go build ./...`, who: AI — expect: exit 0, TypeScript + Vite bundle clean
-- [ ] Extend `test/e2e/fixtures/demo.mjs` (adding `default/kubernetes` Service, HPA on `shop/web`, VPA on `shop/worker`, `0`-replica `shop/idle` Deployment), update `test/e2e/demo-exec.spec.ts`, and add `test/e2e/demo-config.spec.ts` covering golden paths, `403`/`409` edge cases, R9 and R10 (validated in must-fail state) — verify: e2e, `pnpm -C web exec playwright test demo-config.spec.ts demo-exec.spec.ts demo-proxy.spec.ts demo-env.spec.ts`, who: AI — expect: all specs pass, 0 text < 12px, 0 foreign requests
-- [ ] Extend `test/kind/demo-smoke.sh` with live `Service` `ClusterIP` → `LoadBalancer` → proxy `200` → `ClusterIP` (`403`), `Deployment` scale, `HPA` patch, and `default/kubernetes` `403` checks, and update `AGENTS.md`, `README.md`, `SDD.md`, `TDD.md`, and `GUIDE-testing` — verify: integration, `test/kind/up.sh && test/kind/demo-smoke.sh`, who: AI — expect: `demo-smoke: PASS` — docs: AGENTS.md, README.md, SDD.md, TDD.md, GUIDE-testing
-- [ ] Checkpoint — expect: full Go race suite, full offline Playwright suite, live kind smoke, and `fyr check` pass — evidence: `go vet ./... && go test -race ./...`, `pnpm -C web build && pnpm -C web exec playwright test`, `test/kind/demo-smoke.sh`, `fyr check` exit 0
+<!-- none -->
 
 ## Next
 
 <!-- none -->
 
 ## Backlog
+
+- Update `DEPLOY-local` § `Configure` (`--demo` summary) to include Service type switch, workload replica scale, and HPA/VPA controls (added 2026-11-13, Phase 2 review follow-up).
+- Guard `close(writeStarted)` with `sync.Once` in `internal/demo/exec_test.go:377` (`TestPodExecWriteErrorCancelsSessionAndReleasesSlot`) so a 2nd dial retry cannot panic (added 2026-11-13, Phase 2 session note).
 
 - ~~Size-metric switch (`network | CPU | memory | pods`, `PRD.md` `C3`)~~ done: filter pill `Size by` switch (2026-11-12, `size.spec.ts`).
 - Optional persistence of open `--demo` proxy port toggles across restarts (added 2026-11-12, `PLAN-2026-11-12-1113` follow-up).

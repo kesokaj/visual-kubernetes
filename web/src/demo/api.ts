@@ -1,4 +1,6 @@
-// Runtime-validated client for /api/demo/* (Phases 1-3, ADR-010, ADR-011).
+// Runtime-validated client for /api/demo/* (Phases 1-3, ADR-010, ADR-011, ADR-013).
+
+import { DemoHttpError, isProtectedNamespace, isRecord } from './configApi'
 
 export type ExecShell = '/bin/sh' | '/bin/bash'
 
@@ -55,22 +57,8 @@ export type WorkloadEnvPayload = {
   readonly containers: readonly WorkloadContainerEnv[]
 }
 
-export class WorkloadEnvHttpError extends Error {
-  readonly status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.name = 'WorkloadEnvHttpError'
-    this.status = status
-  }
-}
-
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,252}$/
 const WORKLOAD_ID_RE = /^apps\/(Deployment|StatefulSet|DaemonSet)\/([^/]+)\/([^/]+)$/
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
 
 export function isDemoPort(v: unknown): v is DemoPort {
   if (!isRecord(v)) return false
@@ -93,20 +81,6 @@ export function isDemoPort(v: unknown): v is DemoPort {
 export function parsePortsPayload(v: unknown): DemoPort[] {
   if (!isRecord(v) || !Array.isArray(v.ports)) return []
   return v.ports.filter(isDemoPort)
-}
-
-export function isProtectedNamespace(ns: string): boolean {
-  const s = ns.trim().toLowerCase()
-  if (
-    s === '' ||
-    s === 'kube-system' ||
-    s === 'kube-public' ||
-    s === 'kube-node-lease' ||
-    s === 'visual-kubernetes'
-  ) {
-    return true
-  }
-  return s.startsWith('gke-managed-') || s.startsWith('gmp-')
 }
 
 export function isValidEnvName(name: string): boolean {
@@ -203,12 +177,12 @@ export async function fetchWorkloadEnv(id: string, signal?: AbortSignal): Promis
   })
   if (!resp.ok) {
     const text = (await resp.text()).trim()
-    throw new WorkloadEnvHttpError(resp.status, text || `HTTP ${resp.status}`)
+    throw new DemoHttpError(resp.status, text || `HTTP ${resp.status}`)
   }
   const data: unknown = await resp.json()
   const parsed = parseWorkloadEnvPayload(data)
   if (!parsed) {
-    throw new WorkloadEnvHttpError(502, 'Malformed workload environment response')
+    throw new DemoHttpError(502, 'Malformed workload environment response')
   }
   return parsed
 }
@@ -226,12 +200,12 @@ export async function patchWorkloadEnv(params: {
   })
   if (!resp.ok) {
     const text = (await resp.text()).trim()
-    throw new WorkloadEnvHttpError(resp.status, text || `HTTP ${resp.status}`)
+    throw new DemoHttpError(resp.status, text || `HTTP ${resp.status}`)
   }
   const data: unknown = await resp.json()
   const parsed = parseWorkloadEnvPayload(data)
   if (!parsed) {
-    throw new WorkloadEnvHttpError(502, 'Malformed workload environment response')
+    throw new DemoHttpError(502, 'Malformed workload environment response')
   }
   return parsed
 }

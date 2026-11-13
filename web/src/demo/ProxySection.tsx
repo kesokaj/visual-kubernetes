@@ -1,6 +1,7 @@
 import type { Entity } from '../lib/wire'
 import { Section } from '../panel/sections'
-import { isProtectedNamespace, type BrowseSession, type DemoPort } from './api'
+import { type BrowseSession, type DemoPort } from './api'
+import { isProtectedNamespace } from './configApi'
 import { useDemoPorts } from './useDemoPorts'
 
 type Role = 'hub' | 'cp' | 'node' | 'pod' | 'app' | 'sat' | 'ext'
@@ -8,6 +9,7 @@ type Role = 'hub' | 'cp' | 'node' | 'pod' | 'app' | 'sat' | 'ext'
 type Props = {
   entity: Entity
   role: Role
+  refreshNonce?: number
   onBrowse: (session: BrowseSession) => void
   onPortClosed: (serviceId: string, port: number) => void
 }
@@ -18,12 +20,13 @@ function matchesEntity(port: DemoPort, entity: Entity, role: Role): boolean {
   return role === 'sat' && entity.kind === 'Service' && port.id === entity.id
 }
 
-export function ProxySection({ entity, role, onBrowse, onPortClosed }: Props) {
+export function ProxySection({ entity, role, refreshNonce = 0, onBrowse, onPortClosed }: Props) {
   const eligible = role === 'app' || role === 'ext' || (role === 'sat' && entity.kind === 'Service')
   const enabled = eligible && (role === 'ext' || !isProtectedNamespace(entity.namespace))
   const { ports, busyKey, error, setOpen } = useDemoPorts({
     enabled,
     entityId: entity.id,
+    refreshNonce,
     onBrowse,
     onPortClosed,
   })

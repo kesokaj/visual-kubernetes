@@ -3,6 +3,8 @@
 //   - shop/web Deployment + 2 Running Pods + exposed LoadBalancer Service shop/web + ext/internet
 //   - shop/internal Deployment + 1 Running Pod + internal ClusterIP Service (not exposed)
 //   - kube-system/coredns Deployment + Running Pod + NodePort Service (protected namespace -> 403)
+//   - default/kubernetes ClusterIP Service (API service -> 403)
+//   - shop/web HorizontalPodAutoscaler, shop/worker VerticalPodAutoscaler, and 0-replica shop/idle Deployment
 // Usage: node test/e2e/fixtures/demo.mjs <out.ndjson>
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -82,6 +84,29 @@ const entities = [
     status: 'NodePort',
     appId: 'app/kube-system/Deployment/coredns',
   }),
+  ent('core/Service/default/kubernetes', 'Service', 'core', 'kubernetes', 'default', 'servicesConfig', {
+    status: 'ClusterIP',
+  }),
+  ent('autoscaling/HorizontalPodAutoscaler/shop/web', 'HorizontalPodAutoscaler', 'autoscaling', 'web', 'shop', 'workloads', {
+    status: '2/1–10',
+    appId: 'app/shop/Deployment/web',
+  }),
+  ent(
+    'autoscaling.k8s.io/VerticalPodAutoscaler/shop/worker',
+    'VerticalPodAutoscaler',
+    'autoscaling.k8s.io',
+    'worker',
+    'shop',
+    'workloads',
+    {
+      status: 'Auto',
+      appId: 'app/shop/Deployment/worker',
+    },
+  ),
+  ent('app/shop/Deployment/idle', 'Deployment', 'apps', 'idle', 'shop', 'workloads', {
+    status: '0/0 ready',
+    ownerId: 'apps/Deployment/shop/idle',
+  }),
 ]
 
 const edge = (kind, from, to) => ({ id: `${kind}:${from}->${to}`, kind, from, to })
@@ -91,7 +116,11 @@ const edges = [
   edge('hosts', 'core/Node/_/node-1', 'app/shop/Deployment/worker'),
   edge('hosts', 'core/Node/_/node-1', 'app/shop/StatefulSet/db'),
   edge('hosts', 'core/Node/_/node-1', 'app/shop/DaemonSet/agent'),
+  edge('hosts', 'core/Node/_/node-1', 'app/shop/Deployment/idle'),
   edge('hosts', 'core/Node/_/node-1', 'app/kube-system/Deployment/coredns'),
+  edge('references', 'cp/apiserver', 'core/Service/default/kubernetes'),
+  edge('references', 'autoscaling/HorizontalPodAutoscaler/shop/web', 'app/shop/Deployment/web'),
+  edge('references', 'autoscaling.k8s.io/VerticalPodAutoscaler/shop/worker', 'app/shop/Deployment/worker'),
   edge('routes', 'ext/internet', 'app/shop/Deployment/web'),
 ]
 

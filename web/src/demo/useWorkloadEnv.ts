@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  WorkloadEnvHttpError,
   fetchWorkloadEnv,
   isValidEnvName,
   patchWorkloadEnv,
   type WorkloadContainerEnv,
   type WorkloadEnvPayload,
 } from './api'
+import { DemoHttpError } from './configApi'
 
 export type DraftEnvRow = {
   readonly rowId: string
@@ -163,7 +163,7 @@ async function submitEnvPatch(
       savedNotice: `Saved · resourceVersion ${updated.resourceVersion}`,
     }))
   } catch (err: unknown) {
-    const isConflict = err instanceof WorkloadEnvHttpError && err.status === 409
+    const isConflict = err instanceof DemoHttpError && err.status === 409
     const message = err instanceof Error ? err.message : 'Failed to update workload environment'
     setState((cur) => ({ ...cur, saving: false, conflict: isConflict, error: message }))
   }

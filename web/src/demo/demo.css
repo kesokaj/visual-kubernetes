@@ -310,3 +310,102 @@
 .vk .xterm .xterm-scrollable-element > .scrollbar > .scra {
   font-size: 13px !important;
 }
+
+.vk .demo-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vk .demo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.vk .demo-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.vk .demo-card-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vk .demo-segmented-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vk .demo-segmented {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vk .demo-scale-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vk .demo-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vk .demo-scale-input {
+  width: 72px;
+  flex: 0 0 72px;
+  text-align: center;
+}
+
+.vk .demo-auto-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vk .demo-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vk .demo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.vk .demo-vpa-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vk .demo-vpa-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+}

@@ -11,6 +11,12 @@ async function clickBody(page: Page, id: string) {
   await web(page).locator(`[data-layer="bodies"] > g[data-id="${id}"] > use`).first().click()
 }
 
+async function clickSatellite(page: Page, id: string) {
+  const close = panel(page).getByRole('button', { name: 'Close panel' })
+  if (await close.isVisible()) await close.click()
+  await web(page).locator(`[data-layer="bodies"] g[data-id="${id}"] > use`).first().click()
+}
+
 test.describe('demo pod exec off by default', () => {
   test.use({ baseURL: urlOf('telemetry') })
 
@@ -51,12 +57,41 @@ test.describe('interactive demo pod exec terminal (--demo)', () => {
     await page.goto('/')
     await expect(web(page).locator(`[data-layer="bodies"] > g[data-id="${WEB_APP}"]`)).toHaveCount(1)
 
-    // System workload and system pod hide the pod terminal section.
+    // System workload, system pod, and system Service render an explicit protected-namespace notice.
     await clickBody(page, 'app/kube-system/Deployment/coredns')
-    await expect(panel(page).locator('[data-section="demo-exec"]')).toHaveCount(0)
+    await expect(panel(page).locator('[data-section="demo-exec"]')).toBeVisible()
+    await expect(panel(page).locator('[data-section="demo-exec"]').getByTestId('exec-protected')).toContainText(
+      'System namespace is read-only',
+    )
     await panel(page).locator('button[data-pod="core/Pod/kube-system/coredns-0"]').click()
     await expect(panel(page)).toHaveAttribute('data-panel-for', 'core/Pod/kube-system/coredns-0')
-    await expect(panel(page).locator('[data-section="demo-exec"]')).toHaveCount(0)
+    await expect(panel(page).locator('[data-section="demo-exec"]')).toBeVisible()
+    await expect(panel(page).locator('[data-section="demo-exec"]').getByTestId('exec-protected')).toContainText(
+      'System namespace is read-only',
+    )
+    await clickSatellite(page, 'core/Service/kube-system/kube-dns')
+    await expect(panel(page)).toHaveAttribute('data-panel-for', 'core/Service/kube-system/kube-dns')
+    await expect(panel(page).locator('[data-section="demo-exec"]').getByTestId('exec-protected')).toContainText(
+      'System namespace is read-only',
+    )
+
+    // Zero-pod workload explains why Pod shell is unavailable instead of hiding the section.
+    await clickBody(page, 'app/shop/Deployment/idle')
+    await expect(panel(page).locator('[data-section="demo-exec"]').getByTestId('exec-no-pods')).toContainText(
+      'No Running pods yet — scale replicas above 0',
+    )
+
+    // Non-system Service satellite lists backing pods' /bin/sh launch chips and opens the terminal.
+    await clickSatellite(page, 'core/Service/shop/web')
+    await expect(panel(page)).toHaveAttribute('data-panel-for', 'core/Service/shop/web')
+    await expect(panel(page).locator('[data-section="demo-exec"]').getByTestId('exec-pod-web-0')).toBeVisible()
+
+    // Non-system pods on a Node show direct /bin/sh chips while omitting system pods.
+    await clickBody(page, 'core/Node/_/node-1')
+    const nodeExec = panel(page).locator('[data-section="demo-exec"]')
+    await expect(nodeExec).toBeVisible()
+    await expect(nodeExec.locator('button[data-exec-pod="core/Pod/shop/web-0"]')).toBeVisible()
+    await expect(nodeExec.locator('button[data-exec-pod="core/Pod/kube-system/coredns-0"]')).toHaveCount(0)
 
     // Select shop/web -> select pod web-0 -> open /bin/sh terminal.
     await clickBody(page, WEB_APP)
