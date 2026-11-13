@@ -1,7 +1,7 @@
 # PRD — visual-kubernetes
 
 A real-time visualizer of a Kubernetes cluster's internals on one white page for live teaching demos — read-only by default, with an opt-in interactive demo mode for non-production demo clusters.
-Status: approved · Owner: kesokaj · Last updated: 2026-11-12 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
+Status: approved · Owner: kesokaj · Last updated: 2026-11-13 · Design: [SDD.md](SDD.md) · Technical design: [TDD.md](TDD.md)
 
 <!-- Read before every significant change. Immutable without the user's explicit approval of the exact text:
      propose the edit → approval → ADR → PRD.md and TODO.md in one commit (global context § Hard rules).
@@ -38,8 +38,8 @@ People learning Kubernetes cannot see what the cluster does when they apply a De
 
 ## Must — non-negotiable
 
-- **R1** — By default (`install.yaml`, `install-kube-system.yaml`, `install-lb.yaml`, and `--demo=false`), the app only reads: its RBAC grants get, list and watch (plus `get` on `nodes/stats`, `pods/log` and the named non-resource URLs) and no verb that writes or enters pods. Opt-in interactive demo mode (`--demo`, `install-demo.yaml`, `install-iap.yaml` — non-production demo clusters only) adds `patch` and `update` on `apps` `deployments`, `statefulsets` and `daemonsets` (plain container `env` only) plus `get` and `create` on `pods/exec`, refuses system namespaces (`kube-system`, `kube-public`, `kube-node-lease`, `visual-kubernetes`, `gke-managed-*`, `gmp-*`), and proxies only presenter-opened Service ports.
-  <!-- provenance: operator "Remember this is only to visualize.", 2026-11-09, amended 2026-11-12 (ADR-010); enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `test/e2e/live.spec.ts` validateCanIList (each validated in its must-fail state) -->
+- **R1** — By default (`install.yaml`, `install-kube-system.yaml`, `install-lb.yaml`, and `--demo=false`), the app only reads: its RBAC grants get, list and watch (plus `get` on `nodes/stats`, `pods/log` and the named non-resource URLs) and no verb that writes or enters pods. Opt-in interactive demo mode (`--demo`, `install-demo.yaml`, `install-iap.yaml` — non-production demo clusters only) adds `patch` and `update` on `apps` `deployments`, `statefulsets` and `daemonsets` (`replicas` on `deployments`/`statefulsets` and plain container `env` only), `core` `services` (`ClusterIP`/`LoadBalancer` `type` only, excluding `default/kubernetes`), `autoscaling` `horizontalpodautoscalers` (`minReplicas`/`maxReplicas`) and `autoscaling.k8s.io` `verticalpodautoscalers` (`updateMode` and container `maxAllowed`), plus `get` and `create` on `pods/exec`, refuses system namespaces (`kube-system`, `kube-public`, `kube-node-lease`, `visual-kubernetes`, `gke-managed-*`, `gmp-*`), and proxies only presenter-opened Service ports.
+  <!-- provenance: operator "Remember this is only to visualize.", 2026-11-09, amended 2026-11-12 (ADR-010) and 2026-11-13 (ADR-013); enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `test/e2e/live.spec.ts` validateCanIList (each validated in its must-fail state) -->
 - **R2** — The app never reads Secrets, except `get` on the secret `hubble-relay-client-certs` by `resourceNames`.
   <!-- provenance: grill Q8 + row 5, 2026-11-09; enforced by: `deploy/install_test.go` TestInstallManifestReadOnly, `internal/watch/watch_test.go` TestWatcherNeverReadsSecrets, `internal/model/satellites_test.go` TestSecretsAndEventsAreNeverStored -->
 - **R3** — Installation is one `kubectl apply -f install.yaml`; any added step needs the operator's approval.
