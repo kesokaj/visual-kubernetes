@@ -370,11 +370,12 @@ func TestWSFrameWriterPreservesSplitUTF8Runes(t *testing.T) {
 func TestPodExecWriteErrorCancelsSessionAndReleasesSlot(t *testing.T) {
 	m := seedExecModel(t)
 	writeStarted := make(chan struct{})
+	var startOnce sync.Once
 	execDone := make(chan error, 1)
 	fe := &fakePodExec{
 		model: m,
 		onExec: func(ctx context.Context, req ExecRequest) error {
-			close(writeStarted)
+			startOnce.Do(func() { close(writeStarted) })
 			for {
 				if _, err := req.Stdout.Write([]byte("tick\n")); err != nil {
 					execDone <- err

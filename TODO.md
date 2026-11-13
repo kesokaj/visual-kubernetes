@@ -15,8 +15,8 @@
 
 ## Backlog
 
-- Update `DEPLOY-local` § `Configure` (`--demo` summary) to include Service type switch, workload replica scale, and HPA/VPA controls (added 2026-11-13, Phase 2 review follow-up).
-- Guard `close(writeStarted)` with `sync.Once` in `internal/demo/exec_test.go:377` (`TestPodExecWriteErrorCancelsSessionAndReleasesSlot`) so a 2nd dial retry cannot panic (added 2026-11-13, Phase 2 session note).
+- ~~Update `DEPLOY-local` § `Configure` (`--demo` summary) to include Service type switch, workload replica scale, and HPA/VPA controls~~ done: updated `DEPLOY-local` § `Configure` `--demo` summary (2026-11-13).
+- ~~Guard `close(writeStarted)` with `sync.Once` in `internal/demo/exec_test.go:377` (`TestPodExecWriteErrorCancelsSessionAndReleasesSlot`) so a 2nd dial retry cannot panic~~ done: guarded `close(writeStarted)` with `startOnce` (`sync.Once`) in `internal/demo/exec_test.go` (2026-11-13).
 
 - ~~Size-metric switch (`network | CPU | memory | pods`, `PRD.md` `C3`)~~ done: filter pill `Size by` switch (2026-11-12, `size.spec.ts`).
 - Optional persistence of open `--demo` proxy port toggles across restarts (added 2026-11-12, `PLAN-2026-11-12-1113` follow-up).
