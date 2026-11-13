@@ -1,132 +1,188 @@
 # visual-kubernetes
 
-A real-time visualizer of Kubernetes internals on one white page, built for live teaching demos on non-production clusters (read-only by default; opt-in `--demo` mode for interactive demo clusters).
+`visual-kubernetes` renders a live Kubernetes cluster as an airy, force-directed web on a single white page for teaching demos on non-production clusters. It runs as one stateless Deployment that is read-only by default, with an opt-in `--demo` mode for interactive workshops.
 
 ## Install
 
-One command on any cluster that grants the read-only ClusterRole (the image is public and multi-arch, amd64 + arm64):
+Install the default read-only Deployment in one command on any cluster that grants its ClusterRole (multi-arch `amd64` and `arm64` image). You reach the page through `kubectl port-forward`, and remove every resource with a single `kubectl delete -f`.
 
-```bash
-kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
-kubectl -n visual-kubernetes rollout status deploy/visual-kubernetes
-kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80   # then open http://localhost:8080
-```
+1. Apply the manifest, wait for rollout, and forward port `8080`:
 
-`latest` resolves to the newest full release. To pin one, name it instead: `https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install.yaml` (every release asset pins its image by digest).
+   ```bash
+   kubectl apply -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
+   kubectl -n visual-kubernetes rollout status deploy/visual-kubernetes
+   kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80
+   ```
 
-The release asset pins the image by digest; [`deploy/install.yaml`](deploy/install.yaml) in git names the same release by tag (immutable in the registry), so copying it works too. It creates the namespace `visual-kubernetes` (Pod Security `restricted`), a ServiceAccount, a get/list/watch-only ClusterRole and its binding, one Deployment, a ClusterIP Service and a NetworkPolicy that denies all ingress. The page has no authentication: the policy keeps other pods from using its read access, and `kubectl port-forward` still works because it enters the pod's own network namespace. The policy is enforced only where the cluster's CNI implements NetworkPolicy (GKE Dataplane V2, Cilium, Calico, kind's kindnet); elsewhere any pod can reach the Service. Remove it with `kubectl delete -f` on the same file; the app keeps no state.
+2. Open `http://localhost:8080` in your browser.
+
+To pin a specific release instead of `latest`, pass its version tag—for example, `https://github.com/kesokaj/visual-kubernetes/releases/download/v0.2.0/install.yaml` (release assets pin images by digest, while [`deploy/install.yaml`](deploy/install.yaml) in git pins the matching immutable tag).
+
+The default manifest creates the `visual-kubernetes` namespace (Pod Security `restricted`), a read-only ClusterRole, one Deployment, a `ClusterIP` Service, and a deny-all-ingress `NetworkPolicy`. Where your CNI enforces `NetworkPolicy` (GKE Dataplane V2, Cilium, Calico, or `kind` kindnet), other pods cannot reach the app while `kubectl port-forward` still connects.
 
 ### Install variants
 
-| Manifest | Mode & exposure | Use when |
-|----------|-----------------|----------|
-| [`deploy/install.yaml`](deploy/install.yaml) | Read-only · own namespace `visual-kubernetes` (`restricted` PSA) · `ClusterIP` (`kubectl port-forward`) + deny-all-ingress `NetworkPolicy` | Default on any Kubernetes cluster (including GKE Autopilot) |
-| [`deploy/install-kube-system.yaml`](deploy/install-kube-system.yaml) | Read-only · `kube-system` · `ClusterIP` (`kubectl -n kube-system port-forward`) + pod-scoped deny-all-ingress `NetworkPolicy` (no `Namespace` object) | Clusters where you prefer `kube-system` over a dedicated namespace (not GKE Autopilot) |
-| [`deploy/install-lb.yaml`](deploy/install-lb.yaml) | Read-only (`--logs=false`) · `LoadBalancer` (`externalTrafficPolicy: Local`) + `loadBalancerSourceRanges` + matching `ipBlock` `NetworkPolicy` | Shared demo cluster behind client CIDR allowlists (`192.0.2.0/32` placeholder fails closed until replaced) |
-| [`deploy/install-demo.yaml`](deploy/install-demo.yaml) | Interactive `--demo` (**non-production only**, ADR-010/ADR-011/ADR-013) · `ClusterIP` (`kubectl port-forward`) + deny-all-ingress `NetworkPolicy` | Local or port-forwarded teaching demos needing Service proxy/type switch, workload scale/env editing, autoscaler tuning, and pod `exec` (`localhost` `Host` required) |
-| [`deploy/install-iap.yaml`](deploy/install-iap.yaml) | Interactive `--demo` + Google IAP (`--iap-audience` + `--allowed-host`, **non-production only**, ADR-011) · `ClusterIP` (GKE NEG) + Google LB/IAP `ipBlock` `NetworkPolicy` | GKE teaching cluster behind an External HTTPS Application Load Balancer + Identity-Aware Proxy |
+Choose the manifest that matches your cluster exposure and teaching mode; default installs never mutate cluster state.
 
-- **Replacing fail-closed placeholders:** On `install-lb.yaml`, replace `192.0.2.0/32` with your client CIDR(s) (`sed -i.bak 's|192.0.2.0/32|<YOUR_IP>/32|g' install-lb.yaml`). On `install-iap.yaml`, replace `000000000000` / `0000000000000000` in `--iap-audience` with your numeric GCP Project Number and BackendService ID and `visual-kubernetes.example.internal` in `--allowed-host` with your HTTPS Load Balancer hostname.
-- **Installing a local source build onto `kind`:** Before a new release tag is published, build and side-load `visual-kubernetes:dev` onto your local `kind` cluster:
+| Manifest | Mode & exposure | Use when |
+|---|---|---|
+| [`deploy/install.yaml`](deploy/install.yaml) | Read-only · `visual-kubernetes` namespace · `ClusterIP` + deny-all `NetworkPolicy` | Default on any cluster (including GKE Autopilot) |
+| [`deploy/install-kube-system.yaml`](deploy/install-kube-system.yaml) | Read-only · `kube-system` · `ClusterIP` + pod-scoped deny-all `NetworkPolicy` | Clusters where you prefer `kube-system` (not GKE Autopilot) |
+| [`deploy/install-lb.yaml`](deploy/install-lb.yaml) | Read-only (`--logs=false`) · `LoadBalancer` + CIDR `NetworkPolicy` | Shared demo cluster behind client allowlists (`192.0.2.0/32` fails closed) |
+| [`deploy/install-demo.yaml`](deploy/install-demo.yaml) | Interactive `--demo` (**non-production only**) · `ClusterIP` + `localhost` `Host` | Local or port-forwarded teaching demos with interactive controls |
+| [`deploy/install-iap.yaml`](deploy/install-iap.yaml) | Interactive `--demo` + Google IAP (**non-production only**) · GKE NEG `ClusterIP` | GKE teaching cluster behind an External HTTPS Load Balancer + IAP |
+
+<details>
+<summary>Customize placeholders or side-load a local source build onto kind</summary>
+
+- **Replace fail-closed placeholders:** On [`deploy/install-lb.yaml`](deploy/install-lb.yaml), replace `192.0.2.0/32` with your client CIDR(s) (`sed -i.bak 's|192.0.2.0/32|<YOUR_IP>/32|g' deploy/install-lb.yaml`). On [`deploy/install-iap.yaml`](deploy/install-iap.yaml), set your numeric GCP Project Number and BackendService ID in `--iap-audience`, and your HTTPS Load Balancer hostname in `--allowed-host`.
+- **Side-load onto `kind`:** Build the frontend and container image, load it into `kind`, and switch the Deployment image:
+
   ```bash
-  pnpm -C web build && docker build -t visual-kubernetes:dev .
+  docker build -t visual-kubernetes:dev .
   kind load docker-image visual-kubernetes:dev --name visual-kubernetes
   kubectl apply -f deploy/install.yaml   # or deploy/install-demo.yaml on a non-production demo cluster
   kubectl -n visual-kubernetes set image deploy/visual-kubernetes visual-kubernetes=visual-kubernetes:dev
   ```
 
+</details>
+
+> [!WARNING]
+> **LoadBalancer exposure (`install-lb.yaml`):** The UI has **no authentication**, so anyone inside `loadBalancerSourceRanges` can read every watched object (Secrets are excluded; the single named `hubble-relay-client-certs` Secret is never served by `/api/objects`). Never set `0.0.0.0/0` or `::/0`. `externalTrafficPolicy: Local` pairs with the `visual-kubernetes-lb-ingress` `NetworkPolicy` where supported; if your cloud LoadBalancer SNATs traffic or probes port `8080` directly, add its proxy or health-check CIDR under `spec.ingress[0].from`.
+
 ### Uninstall
 
-Every manifest uses only stateless core Kubernetes objects (`Namespace`, `ServiceAccount`, `ClusterRole`, `ClusterRoleBinding`, `Deployment`, `Service`, `NetworkPolicy`) with `app.kubernetes.io/name: visual-kubernetes` and zero finalizers, PVCs, CRDs, or webhooks. Remove an install in one command with the same manifest you applied:
+Every manifest creates only stateless core objects (`Namespace`, `ServiceAccount`, `ClusterRole`, `ClusterRoleBinding`, `Deployment`, `Service`, `NetworkPolicy`) with `app.kubernetes.io/name: visual-kubernetes` and zero finalizers, PVCs, CRDs, or webhooks. Delete an install with the same manifest you applied:
 
 ```bash
 kubectl delete --ignore-not-found -f https://github.com/kesokaj/visual-kubernetes/releases/latest/download/install.yaml
-# or from a local checkout (install.yaml, install-kube-system.yaml, install-lb.yaml, install-demo.yaml, install-iap.yaml):
+# or from a local checkout:
 kubectl delete --ignore-not-found -f deploy/install.yaml
 ```
 
-When switching between variants (for example `install-lb.yaml` or `install-demo.yaml` back to `install.yaml`), run `kubectl delete --ignore-not-found -f <previous-manifest>` first so wider RBAC rules or additive `NetworkPolicy` ingress rules are removed cleanly.
-
-> [!WARNING]
-> **LoadBalancer exposure (`install-lb.yaml`):** The page has **no authentication**. Anyone inside `loadBalancerSourceRanges` can read every watched object in the cluster (Secrets are excluded; the pod's single named `hubble-relay-client-certs` Secret read is never served by `/api/objects`). Setting `0.0.0.0/0` (or `::/0`) makes the cluster's objects **public** to the internet. Source ranges hold only where the cluster's LoadBalancer implementation enforces `loadBalancerSourceRanges`, and `visual-kubernetes-lb-ingress` restricts TCP `8080` to the same `ipBlock` CIDR(s) using `externalTrafficPolicy: Local` so in-cluster pods cannot bypass the LoadBalancer ranges where the CNI enforces `NetworkPolicy` (if your cloud LoadBalancer SNATs client IPs or probes pod port `8080` directly instead of `healthCheckNodePort`, add its proxy/health-check CIDR under `spec.ingress[0].from`). Internal-only LoadBalancers require cloud-specific Service annotations (such as `networking.gke.io/load-balancer-type: "Internal"` on GKE), which are the operator's own edit before applying.
+When switching between variants (for example, `install-demo.yaml` back to `install.yaml`), delete the previous manifest first so wider RBAC rules or ingress policies are removed cleanly.
 
 ## Quick start (development)
 
-Build, run and test commands are in `AGENTS.md` § Setup commands (`go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson` shows the page without a cluster, after `pnpm -C web build`). The `GUIDE-testing` record (`fyr record get GUIDE-testing`) has the tiers behind them. Ready-to-run teaching scenarios and driver scripts are in [`examples/`](examples/README.md) (01-deployment, 02-nodes, 03-hpa, 03b-vpa, 04-traffic).
+You can build, test, and run `visual-kubernetes` locally against a recorded stream without a Kubernetes cluster, or against a `kind` cluster on Colima. All setup and test commands match [`AGENTS.md`](AGENTS.md).
+
+1. Enable `pnpm`, install frontend packages, build the embedded UI, and run Go checks:
+
+   ```bash
+   corepack enable pnpm                     # Node >= 22 (Node 26 needs: npm i -g corepack)
+   pnpm -C web install
+   pnpm -C web build && go build ./...
+   go vet ./... && go test -race ./...
+   ```
+
+2. Run offline Playwright e2e tests or start the UI from a recorded stream:
+
+   ```bash
+   pnpm -C web exec playwright install --only-shell chromium   # once
+   pnpm -C web exec playwright test
+   go run ./cmd/visual-kubernetes --replay test/fixtures/streams/deploy-scale.ndjson
+   ```
+
+3. Explore ready-to-run teaching scenarios (`01-deployment`, `02-nodes`, `03-hpa`, `03b-vpa`, `04-traffic`) in [`examples/README.md`](examples/README.md), and see `fyr record get GUIDE-testing` for all test tiers.
 
 ## Architecture
 
-One Go binary watches the cluster with client-go informers (read-only by default; opt-in `--demo` for non-production interactive demos) and keeps the live model in memory. It streams changes over SSE to an embedded TanStack Start page that draws a force-directed web (SVG + d3-force, with a Canvas 2D particle overlay for traffic flows). The visual reference is `design/mockup-v3.html`.
+One Go binary watches the cluster with `client-go` informers, merges optional kubelet/metrics/Hubble telemetry into an in-memory graph, and streams deltas over Server-Sent Events (`/api/stream`) to an embedded TanStack Start SPA. The visual layout follows [`design/mockup-v3.html`](design/mockup-v3.html): SVG bubbles and edges positioned by `d3-force`, paired with a Canvas 2D particle overlay for live traffic.
 
+```mermaid
+flowchart LR
+  K8S["API Server (Watches, Events, Leases)"] --> WATCH["Go Watcher & Model"]
+  METRICS["Kubelet & metrics.k8s.io"] --> WATCH
+  FLOWS["Hubble Relay or Prometheus (Optional)"] --> WATCH
+  WATCH -->|"SSE /api/stream & /api/objects"| HTTP["HTTP Server (Loopback or Google IAP)"]
+  HTTP --> UI["Embedded TanStack Start SPA"]
+  UI -->|"/api/demo/*"| DEMO["Opt-in --demo Guard"]
+  DEMO -->|"Env, Scale, Exec"| K8S
+  DEMO -->|"Service Proxy"| SVC["Cluster Services & Pods"]
 ```
-cmd/visual-kubernetes/  # the binary: serve (live or --replay), probe, the embedded page
-internal/               # the packages, one responsibility each
-web/                    # the TanStack Start frontend, built into the binary
-examples/               # demo scenarios and driver scripts for teaching
-test/                   # fixtures, Playwright e2e, kind integration
-design/                 # approved mockup
-.agents/                # project customizations and scratch/ (trail records live in fyr's brain store, read with fyr record)
+
+<details>
+<summary>Repository layout (7 top-level directories)</summary>
+
+```text
+cmd/visual-kubernetes/  # Binary entrypoint: serve (live or --replay), probe, embedded ui/dist
+internal/               # Cluster watch, model, SSE stream, probe, kubelet, hubble, iapauth, demo
+web/                    # TanStack Start SPA (pnpm, Tailwind, d3-force) built into the binary
+examples/               # Teaching scenarios and driver scripts
+test/                   # NDJSON fixtures, fixturegen, Playwright e2e, kind scripts
+design/                 # Approved visual reference (mockup-v3.html)
+deploy/                 # Five install manifests and Go invariant tests
 ```
+
+</details>
 
 ## Using the page
 
-Everything on the page is driven by direct clicks, pointer pan/zoom, a compact bottom-left filter menu, and single-key presenter shortcuts.
+Navigate the cluster web with direct clicks, pointer pan/zoom, the compact bottom-left filter pill, and single-key presenter shortcuts.
 
 <details>
 <summary>Page controls and keyboard shortcuts (13 actions)</summary>
 
 | Action | Effect |
-|--------|--------|
-| Click a bubble | Opens the panel for it (click a pod chip in an app's panel to open that pod); everything outside its neighbourhood fades until the panel closes |
-| Hover a bubble | Fades everything outside its neighbourhood (its app's pods and satellites, and the bodies it links to) while the pointer stays on it |
-| Esc, ×, or a click on empty space | Closes the panel; Esc also hides the replay caption |
-| Drag a bubble | Moves it; the rest of the web rearranges around it (the API hub stays pinned) and auto-fit stops |
-| Wheel, pinch / drag on empty space | Zoom and pan; the camera stops auto-fitting |
-| `+` / `−` (keys or the buttons in the filter pill) | Zoom in or out around the centre |
-| Double-click | On a bubble: zoom onto it; on empty space: zoom in there |
-| F, or Fit in the filter pill | Fit the whole web again and resume auto-fit |
-| Filter pill (bottom-left) | Toggle the 8 component groups (all on), show `visual-kubernetes` itself (hidden by default), `Highlight` / `Only show` matching `Deployment`, `StatefulSet`, `DaemonSet` and `Namespace` items, or switch what sizes apps (`Size by`: `Auto`, `Network`, `CPU`, `Memory`, `Pods`) |
-| V | Hide or show the filter pill |
-| R | Replay the newest causal chain received since the page opened (1 step/s) |
-| Space | Pause or resume replay |
-| → | Show next step of replay (keeps pause state; opens the last chain paused if idle) |
+|---|---|
+| Click a bubble | Opens its detail panel and fades objects outside its neighbourhood |
+| Hover a bubble | Temporarily fades everything outside its app, pods, satellites, and linked peers |
+| `Esc`, `×`, or empty click | Closes the panel and hides the replay caption |
+| Drag a bubble | Pins or rearranges it while the rest of the web settles around it (API hub stays centred) |
+| Wheel, pinch, or empty drag | Zooms and pans manually (stops auto-fit) |
+| `+` / `−` | Zooms in or out around the centre |
+| Double-click | Zooms onto a bubble or into empty space |
+| `F` or **Fit** | Fits the whole web in view and resumes auto-fit |
+| Filter pill | Toggles 8 component groups, `visual-kubernetes` self-visibility, `Highlight` / `Only show` filters, and `Size by` |
+| `V` | Hides or shows the filter pill |
+| `R` | Replays the newest causal chain received since opening (1 step/s) |
+| `Space` | Pauses or resumes replay |
+| `→` | Advances replay by one step |
 
 </details>
 
-The panel shows, per object:
+### Interactive `--demo` controls (non-production only)
 
-- **App and pod:** a summary, metrics sparklines for the last 90 s (network rx+tx, CPU, memory, whichever the cluster reports), Events (from events.k8s.io, about the app's workloads and pods; Events about Secrets are never streamed), the pod's last 200 log lines from `/api/logs` (Refresh re-reads them; when started with `--logs=false`, `/api/logs` answers `403` and the panel shows `"Pod logs are off on this install."`), and the YAML from `/api/objects`. An app's config is its top workload (for example `apps/Deployment/shop/web`); replay mode serves only the recorded entities, so that YAML is a 404 there.
-- **Node:** its conditions read from the Node YAML (falling back to its status when there are none), Events and YAML.
-- **API server:** every data source and its probe state (`ok`, `missing`, `denied`, `unreachable`, `error`), the same list `visual-kubernetes probe` prints.
-- **Inferred control-plane part (`cp/*`):** the evidence it was inferred from and the static pods folded behind it.
-- **Internet (globe, `ext/internet`):** drawn only when the cluster has an entrypoint (an Ingress, Gateway, LoadBalancer or NodePort Service); the panel lists those entrypoints. Hubble `reserved:world` flows and Prometheus flows with an external side draw particles from or to the globe.
-- **Interactive demo proxy (`--demo`, non-production only):** on exposed non-system apps/Services (and `ext/internet`), the panel adds an **Exposed ports · demo proxy** gatekeeper. Every port starts closed (`403`); clicking **Open in app** mints a revocable token and opens the Service inside an on-demand sandboxed in-app browser sheet (`<iframe sandbox="allow-scripts allow-forms">`), and **Close port** revokes it immediately.
-- **Interactive demo env editor (`--demo`, non-production only):** on non-system `Deployment`, `StatefulSet`, and `DaemonSet` apps, the panel adds an **Environment · demo editor** section to add, edit, or remove plain container `env` variables with `resourceVersion` `409` conflict detection while keeping `valueFrom` (`secretKeyRef`, `configMapKeyRef`, `fieldRef`) entries locked read-only.
-- **Interactive demo pod terminal (`--demo`, non-production only):** on running non-system `Pod` and app panels (`hostNetwork`, `hostPID`, `hostIPC`, `hostPath`, privileged, and non-baseline-capability pods are refused), **Pod terminal** opens an embedded `@xterm/xterm` (`13px`) drawer connected over `/api/demo/exec` (`/bin/sh` or `/bin/bash`, container tabs on multi-container pods, max 4 concurrent sessions, and a clear notice on distroless containers without a shell; `Esc` or **Close** dismisses it). Backing pod chips also allow launching shells from Service and Node panels.
-- **Interactive demo Service type switch (`--demo`, non-production only):** on non-system `Service` panels (or attached Service satellites), the panel adds a **Service exposure · type** section to toggle `spec.type` between `ClusterIP` and `LoadBalancer` with `resourceVersion` `409` conflict handling. Switching away from `LoadBalancer` immediately refreshes exposed proxy ports and automatically closes the in-app browser sheet with server-side proxy token revocation. Protected namespaces (`kube-system`, `kube-public`, `kube-node-lease`, `visual-kubernetes`, `gke-managed-*`, `gmp-*`) and `core/Service/default/kubernetes` remain read-only.
-- **Interactive demo workload scale & autoscaler controls (`--demo`, non-production only):** on non-system `Deployment` and `StatefulSet` apps, the panel adds a **Workload scaling · replicas** section to adjust `spec.replicas` (`0..50`, optimistic `409` reload), with an inline warning if managed by an HPA (`DaemonSet` panels display a read-only note). On `HorizontalPodAutoscaler` (`HPA`) and `VerticalPodAutoscaler` (`VPA`) satellites, an **Autoscaling** section allows tuning HPA `minReplicas`/`maxReplicas` (`1..50`) or VPA `updateMode` and container CPU/memory limits.
+When started with `--demo` (via [`deploy/install-demo.yaml`](deploy/install-demo.yaml) or [`deploy/install-iap.yaml`](deploy/install-iap.yaml)), the click panel adds live teaching controls gated by namespace protection (`kube-system`, `kube-public`, `kube-node-lease`, `visual-kubernetes`, `gke-managed-*`, `gmp-*`, and `core/Service/default/kubernetes` stay read-only).
+
+| Control | Panel location | Capability |
+|---|---|---|
+| **Exposed ports · demo proxy** | Exposed apps, Services, `ext/internet` | Starts closed (`403`); mints a revocable token to preview a Service inside a sandboxed `<iframe>` |
+| **Service exposure · type** | `Service` panels and satellites | Toggles `ClusterIP` ↔ `LoadBalancer` with `409` conflict checks and auto-revokes proxy sheets on revert |
+| **Environment · demo editor** | `Deployment`, `StatefulSet`, `DaemonSet` | Edits plain container `env` entries (`valueFrom` secrets/ConfigMaps remain locked read-only) |
+| **Workload scaling · replicas** | `Deployment`, `StatefulSet` | Steps `spec.replicas` (`0..50`, optimistic `409` reload; warns if HPA-managed; `DaemonSet` read-only) |
+| **Autoscaling** | `HPA` and `VPA` satellites | Tunes HPA `minReplicas`/`maxReplicas` (`1..50`) or VPA `updateMode` and container `maxAllowed` |
+| **Pod terminal** | Running `Pod`, app, `Service`, `Node` | Embedded `@xterm/xterm` shell over `/api/demo/exec` (refuses host-sharing (`hostNetwork`/`hostPID`/`hostIPC`/`hostPath`) or privileged pods) |
 
 > [!WARNING]
-> Logs are the application's own output and can contain secrets (tokens, passwords, personal data). On installs with `--logs=true` (the default in `install.yaml`, `install-kube-system.yaml`, `install-demo.yaml`, and `install-iap.yaml`), anyone who can open the page can read the last 200 lines of any pod's logs: treat a shared screen accordingly, keep ClusterIP installs behind `kubectl port-forward` or Google IAP, and leave `--logs=false` enabled on `install-lb.yaml`.
+> Pod logs contain application output that may hold tokens or passwords. Because `--logs=true` is the default in `install.yaml`, `install-kube-system.yaml`, `install-demo.yaml`, and `install-iap.yaml`, anyone who can open the UI can read the last 200 log lines per pod—keep ClusterIP installs behind `kubectl port-forward` or Google IAP, and keep `--logs=false` on `install-lb.yaml`.
 
-What the web encodes:
+<details>
+<summary>Detail panel views and visual encodings (panel tabs & 6 canvas signals)</summary>
 
-- **Size:** by default (`Size by: Auto`) an app's icon grows with its network throughput (rx + tx) when kubelet stats are readable, else with CPU from metrics.k8s.io, else with its pod count. The filter pill's `Size by` switch pins `Network`, `CPU`, `Memory` (metrics.k8s.io working set) or `Pods` instead; metrics the cluster does not report are greyed out, and the pill label says `size: <metric>` while one is pinned. The SVG's `data-size-by` says which measure is in use.
-- **Halo:** the three busiest apps by that measure.
-- **Pulse:** a ring when an app is created or changes status (a scale), or one of its pods is added, removed or changes status (for example on a restart).
-- **Travel:** a pod newly placed on a node moves along that node's thread to its app before taking its place on the ring.
-- **Traffic:** when Hubble Relay (Cilium or GKE Dataplane V2) or an in-cluster Prometheus flow series is available, curved edges carry blue particles for forwarded flows and red particles plus `×` marks for `NetworkPolicy` drops. Traffic addressed to a Service rides through that Service's bubble or satellite on its way to the app (from Hubble's `destination_service`, or inferred from the app's only Service or the one whose target port matches, so it works under kube-proxy too).
-- **Hover:** pointing at any object shows its name and what it is (`Kind · namespace`).
-- **Corner counters:** what is not drawn one by one: apps and pods folded on large clusters, unreferenced ConfigMaps, and anything over the 150-bubble budget. Static control-plane pods (`kube-apiserver-*`, `etcd-*`, …) fold behind their `cp/*` part when the cluster exposes one.
+- **App and pod panels:** Summary, 90 s metrics sparklines (network, CPU, memory), Events (`events.k8s.io`, never Secrets), last 200 log lines from `/api/logs` (`403` `"Pod logs are off on this install."` when `--logs=false`), and live YAML from `/api/objects`.
+- **Node, API server, control plane, and internet panels:** Node conditions and Events; `visual-kubernetes probe` source states on the API server; inferred `cp/*` evidence and folded static pods; entrypoint list on `ext/internet`.
+- **Size & halo:** By default (`Size by: Auto`), app icons scale by network throughput, then CPU, then pod count (overridable via `Size by`); the top three apps receive a halo.
+- **Pulse & travel:** Rings pulse on app/pod changes; newly scheduled pods animate along their node thread to their app.
+- **Traffic & counters:** Hubble Relay or Prometheus flows draw blue forwarded particles and red drop particles/`×` marks routed through matching `Service` nodes; corner counters summarize folded or over-budget (> 150) items.
+
+</details>
 
 ## Configuration
 
-No config file or environment settings. The binary takes flags: `--kubeconfig PATH` (local mode), `--addr HOST:PORT` (default `127.0.0.1:8080` locally, `:8080` in-cluster), `--replay FILE` (serve a recorded stream, no cluster), `--logs` (default `true`; `--logs=false` makes `/api/logs` answer `403` and the panel say `"Pod logs are off on this install."`, as `deploy/install-lb.yaml` sets), `--demo` (default `false`; enables `/api/demo/*` for **non-production demo clusters only**, requiring loopback `Host` headers unless `--iap-audience` is set), `--allowed-host HOSTS` (comma-separated DNS `Host` names permitted alongside `localhost` and IP literals), and `--iap-audience AUD` (Google Identity-Aware Proxy audience `/projects/<PROJECT_NUMBER>/...` verified via `google.golang.org/api/idtoken` on every UI and `/api/*` route, requiring `--allowed-host`).
+`visual-kubernetes` reads no config file or custom environment variables; all runtime behaviour is controlled by CLI flags and the `probe` subcommand.
 
-## Deploy
+| Flag / command | Default | Purpose |
+|---|---|---|
+| `--kubeconfig PATH` | In-cluster, else standard rules | Path to a kubeconfig file for local runs |
+| `--addr ADDR` | `127.0.0.1:8080` local, `:8080` in-cluster | HTTP listen address |
+| `--replay FILE` | `""` | Serve a recorded NDJSON stream without contacting a cluster |
+| `--logs` | `true` | Serve pod logs on `/api/logs` (`--logs=false` returns `403`, used by `install-lb.yaml`) |
+| `--demo` | `false` | Enable `/api/demo/*` endpoints on non-production clusters (loopback `Host` unless IAP is set) |
+| `--allowed-host HOSTS` | `""` | Comma-separated DNS `Host` names permitted alongside `localhost` and IP literals |
+| `--iap-audience AUD` | `""` | Google IAP JWT audience (`/projects/<PROJECT_NUMBER>/...`), requiring `--allowed-host` |
+| `probe [--kubeconfig PATH]` | — | Print `<source> ok\|missing\|denied\|unreachable\|error <detail>` for every source |
 
-How it runs locally and on GCP is in the `DEPLOY-local` and `DEPLOY-gcp` records; a release (image push to Artifact Registry, `gh release` with the digest-pinned `install.yaml`, `install-kube-system.yaml`, `install-lb.yaml`, `install-demo.yaml`, and `install-iap.yaml`) goes through `/fyr-preflight`. Default installs have no auth: use `kubectl port-forward` by default, narrow client CIDRs in `loadBalancerSourceRanges` on read-only `install-lb.yaml` (PRD R7, ADR-008), or Google IAP (`install-iap.yaml`, ADR-011) when exposing `--demo` over HTTPS on GKE.
+## Deploy and project records
 
-## Where things are
-
-Decisions: `fyr record list --kind adr`. What changed: `--kind change`. What went wrong and the rule that came out of it: `--kind bug`. The next session starts from the newest handoff, `fyr record list --kind handoff`.
+Local and GCP deployment runbooks live in the `DEPLOY-local` and `DEPLOY-gcp` records (`fyr record get DEPLOY-local`), and releases go through `/fyr-preflight`. Architecture decisions, changes, bug prevention rules, and session handoffs live in `fyr`'s record store (`fyr record list --kind adr`, `--kind change`, `--kind bug`, `--kind handoff`).
