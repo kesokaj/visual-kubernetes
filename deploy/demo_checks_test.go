@@ -24,6 +24,21 @@ func demoExpectedExtraRules() []rbacv1.PolicyRule {
 		},
 		{
 			APIGroups: []string{""},
+			Resources: []string{"services"},
+			Verbs:     []string{"patch", "update"},
+		},
+		{
+			APIGroups: []string{"autoscaling"},
+			Resources: []string{"horizontalpodautoscalers"},
+			Verbs:     []string{"patch", "update"},
+		},
+		{
+			APIGroups: []string{"autoscaling.k8s.io"},
+			Resources: []string{"verticalpodautoscalers"},
+			Verbs:     []string{"patch", "update"},
+		},
+		{
+			APIGroups: []string{""},
 			Resources: []string{"pods/exec"},
 			Verbs:     []string{"create", "get"},
 		},
@@ -105,6 +120,63 @@ func nonProdNoticeViolation(raw string) string {
 	return ""
 }
 
+func withoutDemoRule(apiGroup, resource string) mutation {
+	return func(objs []runtime.Object) []runtime.Object {
+		r := role(objs)
+		kept := make([]rbacv1.PolicyRule, 0, len(r.Rules))
+		for _, rule := range r.Rules {
+			if slices.Equal(rule.APIGroups, []string{apiGroup}) &&
+				slices.Equal(rule.Resources, []string{resource}) &&
+				slices.Equal(rule.Verbs, []string{"patch", "update"}) {
+				continue
+			}
+			kept = append(kept, rule)
+		}
+		r.Rules = kept
+		return objs
+	}
+}
+
+func demoRBACMutants(baseRules []rbacv1.PolicyRule) map[string]mutation {
+	return map[string]mutation{
+		"drop-demo-rules": func(objs []runtime.Object) []runtime.Object {
+			role(objs).Rules = slices.Clone(baseRules)
+			return objs
+		},
+		"drop-services-rule": withoutDemoRule("", "services"),
+		"drop-hpa-rule":      withoutDemoRule("autoscaling", "horizontalpodautoscalers"),
+		"drop-vpa-rule":      withoutDemoRule("autoscaling.k8s.io", "verticalpodautoscalers"),
+		"services-widen-configmaps": func(objs []runtime.Object) []runtime.Object {
+			for i := range role(objs).Rules {
+				r := &role(objs).Rules[i]
+				if slices.Equal(r.APIGroups, []string{""}) && slices.Equal(r.Resources, []string{"services"}) {
+					r.Resources = []string{"services", "configmaps"}
+				}
+			}
+			return objs
+		},
+		"services-create":    addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"create"}}),
+		"services-delete":    addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"services"}, Verbs: []string{"delete"}}),
+		"hpa-delete":         addRule(rbacv1.PolicyRule{APIGroups: []string{"autoscaling"}, Resources: []string{"horizontalpodautoscalers"}, Verbs: []string{"delete"}}),
+		"vpa-create":         addRule(rbacv1.PolicyRule{APIGroups: []string{"autoscaling.k8s.io"}, Resources: []string{"verticalpodautoscalers"}, Verbs: []string{"create"}}),
+		"delete-deployments": addRule(rbacv1.PolicyRule{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"delete"}}),
+		"create-pods":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"create"}}),
+		"secrets-list":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list"}}),
+		"pods-attach":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/attach"}, Verbs: []string{"create"}}),
+		"pods-portforward":   addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/portforward"}, Verbs: []string{"create"}}),
+		"services-proxy":     addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"services/proxy"}, Verbs: []string{"get"}}),
+		"nodes-proxy":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes/proxy"}, Verbs: []string{"get"}}),
+		"aggregation-rule": func(objs []runtime.Object) []runtime.Object {
+			role(objs).AggregationRule = &rbacv1.AggregationRule{}
+			return objs
+		},
+		"wrong-subject": func(objs []runtime.Object) []runtime.Object {
+			binding(objs).Subjects[0].Namespace = "default"
+			return objs
+		},
+	}
+}
+
 func TestInstallDemoRBAC(t *testing.T) {
 	raw, err := os.ReadFile(demoPath)
 	if err != nil {
@@ -123,27 +195,7 @@ func TestInstallDemoRBAC(t *testing.T) {
 		t.Fatal("must-fail: read-only rbacViolationsIn accepted install-demo.yaml")
 	}
 
-	checkFileBothWays(t, demoPath, demoRBACViolations(role(inst).Rules), map[string]mutation{
-		"drop-demo-rules": func(objs []runtime.Object) []runtime.Object {
-			role(objs).Rules = slices.Clone(role(inst).Rules)
-			return objs
-		},
-		"delete-deployments": addRule(rbacv1.PolicyRule{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: []string{"delete"}}),
-		"create-pods":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"create"}}),
-		"secrets-list":       addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list"}}),
-		"pods-attach":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/attach"}, Verbs: []string{"create"}}),
-		"pods-portforward":   addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"pods/portforward"}, Verbs: []string{"create"}}),
-		"services-proxy":     addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"services/proxy"}, Verbs: []string{"get"}}),
-		"nodes-proxy":        addRule(rbacv1.PolicyRule{APIGroups: []string{""}, Resources: []string{"nodes/proxy"}, Verbs: []string{"get"}}),
-		"aggregation-rule": func(objs []runtime.Object) []runtime.Object {
-			role(objs).AggregationRule = &rbacv1.AggregationRule{}
-			return objs
-		},
-		"wrong-subject": func(objs []runtime.Object) []runtime.Object {
-			binding(objs).Subjects[0].Namespace = "default"
-			return objs
-		},
-	})
+	checkFileBothWays(t, demoPath, demoRBACViolations(role(inst).Rules), demoRBACMutants(role(inst).Rules))
 }
 
 func TestInstallDemoPodServiceAndNetworkPolicy(t *testing.T) {

@@ -90,6 +90,8 @@ func isForbiddenIP(ip netip.Addr, extra []netip.Addr) bool {
 type Options struct {
 	Catalog         Catalog
 	Workloads       WorkloadStore
+	Services        ServiceStore
+	Autoscalers     AutoscalerStore
 	Exec            PodExecutor
 	MaxExecSessions int
 	ExecIdleTimeout time.Duration
@@ -104,6 +106,8 @@ type Options struct {
 type Server struct {
 	catalog         Catalog
 	workloads       WorkloadStore
+	services        ServiceStore
+	autoscalers     AutoscalerStore
 	exec            PodExecutor
 	execGate        *execGate
 	execIdleTimeout time.Duration
@@ -127,6 +131,8 @@ func NewServer(o Options) *Server {
 	s := &Server{
 		catalog:         o.Catalog,
 		workloads:       o.Workloads,
+		services:        o.Services,
+		autoscalers:     o.Autoscalers,
 		exec:            o.Exec,
 		execGate:        newExecGate(o.MaxExecSessions),
 		execIdleTimeout: idle,
@@ -164,6 +170,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/demo/ports", SameOrigin(http.HandlerFunc(s.handlePostPorts)))
 	mux.HandleFunc("GET /api/demo/workloads/env", s.handleGetWorkloadEnv)
 	mux.Handle("PATCH /api/demo/workloads/env", SameOrigin(http.HandlerFunc(s.handlePatchWorkloadEnv)))
+	mux.HandleFunc("GET /api/demo/workloads/scale", s.handleGetWorkloadScale)
+	mux.Handle("PATCH /api/demo/workloads/scale", SameOrigin(http.HandlerFunc(s.handlePatchWorkloadScale)))
+	mux.HandleFunc("GET /api/demo/services/type", s.handleGetServiceType)
+	mux.Handle("PATCH /api/demo/services/type", SameOrigin(http.HandlerFunc(s.handlePatchServiceType)))
+	mux.HandleFunc("GET /api/demo/autoscalers", s.handleGetAutoscaler)
+	mux.Handle("PATCH /api/demo/autoscalers", SameOrigin(http.HandlerFunc(s.handlePatchAutoscaler)))
 	mux.HandleFunc("GET /api/demo/exec", s.handleExec)
 	mux.HandleFunc(ProxyPrefix, s.handleProxy)
 	mux.HandleFunc("/api/demo/", func(w http.ResponseWriter, _ *http.Request) {
@@ -326,4 +338,15 @@ func (g *gatekeeper) lookupToken(tok string) (portKey, bool) {
 	defer g.mu.RUnlock()
 	k, ok := g.byToken[tok]
 	return k, ok
+}
+
+func (g *gatekeeper) revokeService(ns, service string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for k, tok := range g.byPort {
+		if k.ns == ns && k.service == service {
+			delete(g.byToken, tok)
+			delete(g.byPort, k)
+		}
+	}
 }

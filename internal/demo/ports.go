@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -51,12 +52,74 @@ type Catalog interface {
 	ExposedPorts() []PortEntry
 	ResolveTarget(ns, service string, port int32) (TargetResolved, *StatusErr)
 	ForbiddenIPs() []netip.Addr
+	IsServiceRouted(ns, service string) bool
+	SetServiceTypeOverride(ns, service string, svcType corev1.ServiceType, rv string)
+}
+
+type serviceTypeOverride struct {
+	svcType corev1.ServiceType
+	rv      string
 }
 
 // ModelCatalog reads exposed Services from the live model cache (D9).
 type ModelCatalog struct {
 	Model     *model.Model
 	InCluster bool
+
+	mu        sync.Mutex
+	overrides map[string]serviceTypeOverride
+}
+
+// IsServiceRouted reports whether an unfolded Ingress or HTTPRoute routes traffic to ns/service.
+func (c *ModelCatalog) IsServiceRouted(ns, service string) bool {
+	if c == nil || c.Model == nil {
+		return false
+	}
+	ents, edges := c.Model.Snapshot()
+	routed := c.routedServices(ents, edges)
+	return routed[ns+"/"+service] != ""
+}
+
+// SetServiceTypeOverride records a freshly patched Service type until Model catches up (D3).
+func (c *ModelCatalog) SetServiceTypeOverride(ns, service string, svcType corev1.ServiceType, rv string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.overrides == nil {
+		c.overrides = map[string]serviceTypeOverride{}
+	}
+	c.overrides[ns+"/"+service] = serviceTypeOverride{svcType: svcType, rv: rv}
+}
+
+func (c *ModelCatalog) effectiveServiceType(svc *corev1.Service) corev1.ServiceType {
+	actual := svc.Spec.Type
+	if actual == "" {
+		actual = corev1.ServiceTypeClusterIP
+	}
+	key := svc.Namespace + "/" + svc.Name
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ov, ok := c.overrides[key]
+	if !ok {
+		return actual
+	}
+	if actual == ov.svcType && (ov.rv == "" || svc.ResourceVersion == ov.rv || rvGreater(svc.ResourceVersion, ov.rv)) {
+		delete(c.overrides, key)
+		return actual
+	}
+	if actual != ov.svcType && ov.rv != "" && rvGreater(svc.ResourceVersion, ov.rv) {
+		delete(c.overrides, key)
+		return actual
+	}
+	return ov.svcType
+}
+
+func rvGreater(a, b string) bool {
+	ua, errA := strconv.ParseUint(a, 10, 64)
+	ub, errB := strconv.ParseUint(b, 10, 64)
+	return errA == nil && errB == nil && ua > ub
 }
 
 // ExposedPorts lists TCP ports on unfolded, non-protected Services exposed by LoadBalancer,
@@ -77,7 +140,7 @@ func (c *ModelCatalog) ExposedPorts() []PortEntry {
 		if !ok || !isSvc || len(svc.Spec.Selector) == 0 {
 			continue
 		}
-		exp := serviceExposure(svc, routed[svc.Namespace+"/"+svc.Name])
+		exp := serviceExposure(c.effectiveServiceType(svc), routed[svc.Namespace+"/"+svc.Name])
 		if exp == "" {
 			continue
 		}
@@ -94,8 +157,8 @@ func (c *ModelCatalog) ExposedPorts() []PortEntry {
 	return out
 }
 
-func serviceExposure(svc *corev1.Service, routedBy string) string {
-	switch svc.Spec.Type {
+func serviceExposure(svcType corev1.ServiceType, routedBy string) string {
+	switch svcType {
 	case corev1.ServiceTypeLoadBalancer:
 		return "LoadBalancer"
 	case corev1.ServiceTypeNodePort:

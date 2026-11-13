@@ -2,6 +2,7 @@ package demo
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -14,11 +15,13 @@ import (
 
 type replayWorkloadState struct {
 	rv         int
+	replicas   int32
+	ready      int32
 	containers []corev1.Container
 }
 
 // ReplayWorkloads is an in-memory WorkloadStore backed by a replay Hub's entities so --replay
-// --demo exercises the full GET/PATCH/409/readOnlySource contract without a cluster.
+// --demo exercises the full GET/PATCH/409/readOnlySource and replica scale contracts without a cluster.
 type ReplayWorkloads struct {
 	Hub  *stream.Hub
 	mu   sync.Mutex
@@ -69,6 +72,40 @@ func (r *ReplayWorkloads) PatchWorkloadEnv(_ context.Context, ref model.Ref, req
 	}, nil
 }
 
+// GetWorkloadScale returns the replay workload's replica count and HPA warning state.
+func (r *ReplayWorkloads) GetWorkloadScale(_ context.Context, ref model.Ref) (WorkloadScaleResponse, *StatusErr) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.loadLocked(ref)
+	if !ok {
+		return WorkloadScaleResponse{}, &StatusErr{Code: http.StatusNotFound, Msg: "workload not found"}
+	}
+	return buildWorkloadScaleResponse(ref, strconv.Itoa(st.rv), st.replicas, r.findManagingHPA(ref)), nil
+}
+
+// PatchWorkloadScale updates the replay workload's replica count and publishes an upsert delta.
+func (r *ReplayWorkloads) PatchWorkloadScale(_ context.Context, ref model.Ref, req PatchWorkloadScaleRequest) (WorkloadScaleResponse, *StatusErr) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.loadLocked(ref)
+	if !ok {
+		return WorkloadScaleResponse{}, &StatusErr{Code: http.StatusNotFound, Msg: "workload not found"}
+	}
+	if strconv.Itoa(st.rv) != req.ResourceVersion {
+		return WorkloadScaleResponse{}, &StatusErr{Code: http.StatusConflict, Msg: resourceConflictMessage}
+	}
+	st.replicas = *req.Replicas
+	st.rv++
+	appID := model.AppID(ref.Namespace, ref.Kind, ref.Name)
+	if r.Hub != nil {
+		if ent, ok := r.Hub.Entity(appID); ok {
+			ent.Status = fmt.Sprintf("%d/%d ready", min(st.ready, st.replicas), st.replicas)
+			_ = r.Hub.Publish(model.Event{Type: string(model.OpUpsert), Data: model.EntityData{Entity: ent}})
+		}
+	}
+	return buildWorkloadScaleResponse(ref, strconv.Itoa(st.rv), st.replicas, r.findManagingHPA(ref)), nil
+}
+
 func (r *ReplayWorkloads) loadLocked(ref model.Ref) (*replayWorkloadState, bool) {
 	id := ref.ID()
 	if r.byID != nil {
@@ -105,9 +142,39 @@ func (r *ReplayWorkloads) loadLocked(ref model.Ref) (*replayWorkloadState, bool)
 			Env:  []corev1.EnvVar{{Name: "METRICS_PORT", Value: "9100"}},
 		})
 	}
-	st := &replayWorkloadState{rv: 1, containers: containers}
+	ready, desired := r.seedScaleFromHub(ref)
+	st := &replayWorkloadState{rv: 1, replicas: desired, ready: ready, containers: containers}
 	r.byID[id] = st
 	return st, true
+}
+
+func (r *ReplayWorkloads) seedScaleFromHub(ref model.Ref) (ready, desired int32) {
+	if r == nil || r.Hub == nil {
+		return 1, 1
+	}
+	ent, ok := r.Hub.Entity(model.AppID(ref.Namespace, ref.Kind, ref.Name))
+	if !ok {
+		return 1, 1
+	}
+	var gotReady, gotDesired int32
+	if n, err := fmt.Sscanf(ent.Status, "%d/%d ready", &gotReady, &gotDesired); err == nil && n == 2 && gotReady >= 0 && gotDesired >= 0 {
+		return gotReady, gotDesired
+	}
+	return 1, 1
+}
+
+func (r *ReplayWorkloads) findManagingHPA(ref model.Ref) string {
+	if r == nil || r.Hub == nil {
+		return ""
+	}
+	appID := model.AppID(ref.Namespace, ref.Kind, ref.Name)
+	ents, _ := r.Hub.Snapshot()
+	for _, e := range ents {
+		if !e.Folded && e.Group == "autoscaling" && e.Kind == "HorizontalPodAutoscaler" && e.Namespace == ref.Namespace && e.AppID == appID {
+			return e.Name
+		}
+	}
+	return ""
 }
 
 func (r *ReplayWorkloads) existsInHub(id string) bool {

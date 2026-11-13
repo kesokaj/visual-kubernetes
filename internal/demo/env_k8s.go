@@ -19,6 +19,7 @@ const conflictMessage = "workload changed since it was loaded; reload and try ag
 // any Secret objects (PRD R1, R2).
 type KubeWorkloads struct {
 	Client kubernetes.Interface
+	Model  *model.Model
 	Log    *slog.Logger
 }
 

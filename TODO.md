@@ -7,18 +7,17 @@
 
 ## Now
 
-### Phase 1 — `--demo` RBAC manifests and Service / Scale / Autoscaler Go & replay backends (`PLAN-2026-11-13-1117-plan-demo-panel-controls-for-service-type-worklo`)
-Goal: widen `install-demo.yaml` and `install-iap.yaml` RBAC with bidirectional tests and implement guarded live + `--replay` stores and `/api/demo/*` routes for `Service` `ClusterIP`/`LoadBalancer` type, workload `replicas`, and `HPA`/`VPA` scaling.
+### Phase 2 — Click-panel UI editors, `ExecSection` clarity, Playwright e2e, live kind smoke, and docs (`PLAN-2026-11-13-1117-plan-demo-panel-controls-for-service-type-worklo`)
+Goal: ship click-panel UI controls (`ServiceTypeSection`, `ScaleSection`, `AutoscalerSection`), `ExecSection` status clarity and `Service`/`Node` pod launch chips, offline Playwright e2e (`demo-config.spec.ts` + `demo-exec.spec.ts`), live `kind` smoke checks (`demo-smoke.sh`), and documentation updates.
 
-- [ ] Update `deploy/install-demo.yaml` and `deploy/install-iap.yaml` ClusterRole rules with narrow `patch, update` on `""` `services`, `autoscaling` `horizontalpodautoscalers`, and `autoscaling.k8s.io` `verticalpodautoscalers`, and pin both ways in `deploy/demo_checks_test.go` and `deploy/iap_checks_test.go` — verify: unit, `go test -race ./deploy/...`, who: AI — expect: exit 0; read-only manifests stay unchanged and mutated extra/missing rules fail
-- [ ] Implement `ServiceStore` (`internal/demo/{service,service_k8s,replay_service,service_test}.go`), `Catalog.IsServiceRouted` + `SetServiceTypeOverride`, `gate.revokeService`, and `GET`/`PATCH /api/demo/services/type` — verify: unit, `go test -race ./internal/demo/... -run TestServiceType`, who: AI — expect: exit 0 (`ClusterIP` ↔ `LoadBalancer`, `healthCheckNodePort`/`nodePort` cleared, immediate proxy revocation without watch race, replay `ext/internet` `upsert`/`delete` deltas, `default/kubernetes` & `kube-system` `403`, headless/ExternalName `400`, stale `rv` `409`)
-- [ ] Extend `WorkloadStore` with `GetWorkloadScale`/`PatchWorkloadScale` (`internal/demo/{scale,scale_k8s,scale_test}.go` + `ReplayWorkloads`) and `GET`/`PATCH /api/demo/workloads/scale` — verify: unit, `go test -race ./internal/demo/... -run TestWorkloadScale`, who: AI — expect: exit 0 (`Deployment` & `StatefulSet` `0..50`, `managedByHPA` populated, `DaemonSet` & out-of-range `400`, `409` conflict, `kube-system` `403`)
-- [ ] Implement `AutoscalerStore` (`internal/demo/{autoscaler,autoscaler_k8s,replay_autoscaler,autoscaler_test}.go`) + `GET`/`PATCH /api/demo/autoscalers` and wire all stores in `cmd/visual-kubernetes/serve.go` + `cmd/visual-kubernetes/serve_demo_test.go` — verify: unit, `go test -race ./internal/demo/... ./cmd/visual-kubernetes/...`, who: AI — expect: exit 0 (HPA `min/max` & VPA unstructured nil/wildcard/clear-key handling + missing CRD `404` + replay parity + `--demo=false` `403`)
-- [ ] Checkpoint — expect: all Go packages pass vet and race tests cleanly — evidence: `go vet ./... && go test -race ./...` exit 0
+- [ ] Add typed client helpers (`web/src/demo/api.ts`), `ServiceTypeSection.tsx` (`useServiceType.ts`), `ScaleSection.tsx` (`useWorkloadScale.ts`), `AutoscalerSection.tsx` (`useAutoscaler.ts`), and `ExecSection.tsx` status/satellite/node improvements, wired into `web/src/panel/Panel.tsx` and `ProxySection.tsx` refresh/`BrowserSheet` close — verify: build, `pnpm -C web build && go build ./...`, who: AI — expect: exit 0, TypeScript + Vite bundle clean
+- [ ] Extend `test/e2e/fixtures/demo.mjs` (adding `default/kubernetes` Service, HPA on `shop/web`, VPA on `shop/worker`, `0`-replica `shop/idle` Deployment), update `test/e2e/demo-exec.spec.ts`, and add `test/e2e/demo-config.spec.ts` covering golden paths, `403`/`409` edge cases, R9 and R10 (validated in must-fail state) — verify: e2e, `pnpm -C web exec playwright test demo-config.spec.ts demo-exec.spec.ts demo-proxy.spec.ts demo-env.spec.ts`, who: AI — expect: all specs pass, 0 text < 12px, 0 foreign requests
+- [ ] Extend `test/kind/demo-smoke.sh` with live `Service` `ClusterIP` → `LoadBalancer` → proxy `200` → `ClusterIP` (`403`), `Deployment` scale, `HPA` patch, and `default/kubernetes` `403` checks, and update `AGENTS.md`, `README.md`, `SDD.md`, `TDD.md`, and `GUIDE-testing` — verify: integration, `test/kind/up.sh && test/kind/demo-smoke.sh`, who: AI — expect: `demo-smoke: PASS` — docs: AGENTS.md, README.md, SDD.md, TDD.md, GUIDE-testing
+- [ ] Checkpoint — expect: full Go race suite, full offline Playwright suite, live kind smoke, and `fyr check` pass — evidence: `go vet ./... && go test -race ./...`, `pnpm -C web build && pnpm -C web exec playwright test`, `test/kind/demo-smoke.sh`, `fyr check` exit 0
 
 ## Next
 
-- Phase 2 (`PLAN-2026-11-13-1117-plan-demo-panel-controls-for-service-type-worklo`): Click-panel UI editors (`ServiceTypeSection`, `ScaleSection`, `AutoscalerSection`), `ExecSection` clarity & `Service`/`Node` pod chips, Playwright e2e, live `kind` smoke, and docs.
+<!-- none -->
 
 ## Backlog
 

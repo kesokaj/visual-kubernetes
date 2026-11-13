@@ -218,16 +218,22 @@ func startLiveFull(ctx context.Context, kubeconfig string, logs, demoMode, iapEn
 
 	srv := newLiveServer(hub, w.Synced, m, cl, logs, log)
 	if demoMode {
-		srv.Demo = demo.NewServer(demo.Options{
-			Catalog:    &demo.ModelCatalog{Model: m, InCluster: inCluster},
-			Workloads:  &demo.KubeWorkloads{Client: cs, Log: log},
-			Exec:       &demo.KubeExec{Model: m, Client: cs, ExecCfg: cl.execCfg, Log: log},
-			IAPEnabled: iapEnabled,
-			Log:        log,
-		}).Handler()
+		srv.Demo = newLiveDemoHandler(m, cl, iapEnabled, log)
 	}
 	log.Info("watching", "host", cfg.Host, "inCluster", inCluster, "logs", logs, "demo", demoMode, "iap", iapEnabled)
 	return app{handler: srv.Handler(), inCluster: inCluster}, nil
+}
+
+func newLiveDemoHandler(m *model.Model, cl clients, iapEnabled bool, log *slog.Logger) http.Handler {
+	return demo.NewServer(demo.Options{
+		Catalog:     &demo.ModelCatalog{Model: m, InCluster: cl.inCluster},
+		Workloads:   &demo.KubeWorkloads{Client: cl.cs, Model: m, Log: log},
+		Services:    &demo.KubeServices{Client: cl.cs, Log: log},
+		Autoscalers: &demo.KubeAutoscalers{Client: cl.cs, Dyn: cl.dyn, Model: m, Log: log},
+		Exec:        &demo.KubeExec{Model: m, Client: cl.cs, ExecCfg: cl.execCfg, Log: log},
+		IAPEnabled:  iapEnabled,
+		Log:         log,
+	}).Handler()
 }
 
 // newChainSink builds the single-goroutine watch sink: initial-list items prime the causal-chain

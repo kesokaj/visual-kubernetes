@@ -1,5 +1,5 @@
 # visual-kubernetes: opt-in Google Identity-Aware Proxy (IAP) interactive demo variant for
-# NON-PRODUCTION teaching clusters ONLY (PRD R1, R6, R7, S1; ADR-010, ADR-011).
+# NON-PRODUCTION teaching clusters ONLY (PRD R1, R6, R7, S1; ADR-010, ADR-011, ADR-013).
 #
 # WARNING: DO NOT apply this manifest to production clusters. For production or read-only
 # inspection, apply deploy/install.yaml instead.
@@ -13,6 +13,10 @@
 #   3. Attach a GKE ManagedCertificate, BackendConfig (spec.iap.enabled: true + oauthclientCredentials
 #      secretName), and GKE External Application Load Balancer Ingress routing that hostname to
 #      svc/visual-kubernetes:80.
+#   4. NOTE: Switching a workload Service to `LoadBalancer` from the `--demo` panel on GKE provisions
+#      an external `0.0.0.0/0` cloud Network Load Balancer (bypassing IAP on that workload Service)
+#      unless constrained by a cluster ValidatingAdmissionPolicy or VPC firewall; grant IAP access
+#      only to trusted presenters on isolated non-production demo clusters.
 #
 # Uninstall cleanly with:
 #   kubectl delete --ignore-not-found -f deploy/install-iap.yaml
@@ -104,6 +108,15 @@ rules:
     verbs: [get]
   - apiGroups: [apps]
     resources: [daemonsets, deployments, statefulsets]
+    verbs: [patch, update]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [patch, update]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [patch, update]
+  - apiGroups: [autoscaling.k8s.io]
+    resources: [verticalpodautoscalers]
     verbs: [patch, update]
   - apiGroups: [""]
     resources: [pods/exec]

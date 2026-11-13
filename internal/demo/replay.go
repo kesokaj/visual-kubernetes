@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
+
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/kesokaj/visual-kubernetes/internal/model"
 	"github.com/kesokaj/visual-kubernetes/internal/stream"
@@ -16,17 +19,65 @@ import (
 // in-memory HTML upstream (D10), with explicit IAP host-unlock state.
 func NewReplayServer(hub *stream.Hub, iapEnabled bool) *Server {
 	return NewServer(Options{
-		Catalog:    &ReplayCatalog{Hub: hub},
-		Workloads:  &ReplayWorkloads{Hub: hub},
-		Exec:       &ReplayExec{Hub: hub},
-		Transport:  ReplayTransport(),
-		IAPEnabled: iapEnabled,
+		Catalog:     &ReplayCatalog{Hub: hub},
+		Workloads:   &ReplayWorkloads{Hub: hub},
+		Services:    &ReplayServices{Hub: hub},
+		Autoscalers: &ReplayAutoscalers{Hub: hub},
+		Exec:        &ReplayExec{Hub: hub},
+		Transport:   ReplayTransport(),
+		IAPEnabled:  iapEnabled,
 	})
 }
 
 // ReplayCatalog derives exposed non-protected Service ports from a replay Hub's entities and edges.
 type ReplayCatalog struct {
 	Hub *stream.Hub
+
+	mu        sync.Mutex
+	overrides map[string]corev1.ServiceType
+}
+
+// IsServiceRouted reports whether an unfolded Ingress or HTTPRoute routes traffic to ns/service.
+func (c *ReplayCatalog) IsServiceRouted(ns, service string) bool {
+	if c == nil || c.Hub == nil {
+		return false
+	}
+	ents, edges := c.Hub.Snapshot()
+	bySvc, byApp := replayRoutedTargets(ents, edges)
+	svcID := "core/Service/" + ns + "/" + service
+	if bySvc[svcID] != "" {
+		return true
+	}
+	if e, ok := c.Hub.Entity(svcID); ok && e.AppID != "" && byApp[e.AppID] != "" {
+		return true
+	}
+	return false
+}
+
+// SetServiceTypeOverride records a freshly patched Service type on the replay catalog.
+func (c *ReplayCatalog) SetServiceTypeOverride(ns, service string, svcType corev1.ServiceType, _ string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.overrides == nil {
+		c.overrides = map[string]corev1.ServiceType{}
+	}
+	c.overrides[ns+"/"+service] = svcType
+}
+
+func (c *ReplayCatalog) effectiveStatus(e model.Entity) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ov, ok := c.overrides[e.Namespace+"/"+e.Name]; ok {
+		if e.Status == string(ov) {
+			delete(c.overrides, e.Namespace+"/"+e.Name)
+		} else {
+			return string(ov)
+		}
+	}
+	return e.Status
 }
 
 // ExposedPorts returns port 80 ("http") for every unfolded non-protected Service in Hub that is
@@ -42,6 +93,7 @@ func (c *ReplayCatalog) ExposedPorts() []PortEntry {
 		if e.Group != "core" || e.Kind != "Service" || e.Folded || IsProtectedNamespace(e.Namespace) {
 			continue
 		}
+		e.Status = c.effectiveStatus(e)
 		exp := replayServiceExposure(e, routedSvc, routedApp)
 		if exp == "" {
 			continue

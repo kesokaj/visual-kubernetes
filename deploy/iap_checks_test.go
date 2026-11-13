@@ -77,16 +77,11 @@ func TestInstallIAPVariant(t *testing.T) {
 	}
 
 	inst := decodeFile(t, installPath)
-	checkFileBothWays(t, iapPath, demoRBACViolations(role(inst).Rules), map[string]mutation{
-		"drop-demo-rules": func(objs []runtime.Object) []runtime.Object {
-			role(objs).Rules = slices.Clone(role(inst).Rules)
-			return objs
-		},
-		"wrong-subject": func(objs []runtime.Object) []runtime.Object {
-			binding(objs).Subjects[0].Namespace = "default"
-			return objs
-		},
-	})
+	iapObjs := decodeFile(t, iapPath)
+	if got := rbacViolationsIn(appName)(iapObjs); len(got) == 0 {
+		t.Fatal("must-fail: read-only rbacViolationsIn accepted install-iap.yaml")
+	}
+	checkFileBothWays(t, iapPath, demoRBACViolations(role(inst).Rules), demoRBACMutants(role(inst).Rules))
 
 	checkFileBothWays(t, iapPath, iapViolations(container(inst).Image), map[string]mutation{
 		"missing-demo": func(objs []runtime.Object) []runtime.Object {

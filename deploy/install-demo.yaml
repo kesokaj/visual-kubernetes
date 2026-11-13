@@ -1,5 +1,5 @@
 # visual-kubernetes: opt-in interactive demo variant for NON-PRODUCTION teaching clusters ONLY
-# (PRD R1, R6, R7, S1; ADR-010, ADR-011).
+# (PRD R1, R6, R7, S1; ADR-010, ADR-011, ADR-013).
 #
 # WARNING: DO NOT apply this manifest to production clusters. For production or read-only
 # inspection, apply deploy/install.yaml instead.
@@ -8,13 +8,19 @@
 #   kubectl -n visual-kubernetes port-forward svc/visual-kubernetes 8080:80
 #   open http://localhost:8080
 #
-# This variant passes `--demo` and grants ONLY two additional narrow rules beyond install.yaml:
-#   - apps [daemonsets, deployments, statefulsets] [patch, update] (plain container env editor)
+# This variant passes `--demo` and grants ONLY five additional narrow rules beyond install.yaml:
+#   - apps [daemonsets, deployments, statefulsets] [patch, update] (deployments/statefulsets replicas & plain container env)
+#   - "" [services] [patch, update] (ClusterIP/LoadBalancer type, excluding default/kubernetes)
+#   - autoscaling [horizontalpodautoscalers] [patch, update] (minReplicas/maxReplicas)
+#   - autoscaling.k8s.io [verticalpodautoscalers] [patch, update] (updateMode & container maxAllowed)
 #   - "" [pods/exec] [create, get] (interactive pod shell)
 # Secrets remain locked (R2), system namespaces (`kube-system`, `kube-public`, `kube-node-lease`,
 # `visual-kubernetes`, `gke-managed-*`, `gmp-*`) are refused with 403, the Service stays ClusterIP
 # behind a deny-all-ingress NetworkPolicy, and `--demo` without `--iap-audience` refuses non-loopback
 # Host headers (`localhost`, `127.0.0.1`, `::1` via `kubectl port-forward`).
+# NOTE: On cloud clusters, switching a Service to `LoadBalancer` provisions a public `0.0.0.0/0`
+# cloud LoadBalancer unless restricted by a ValidatingAdmissionPolicy or VPC firewall; apply only on
+# isolated non-production demo clusters.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -103,6 +109,15 @@ rules:
     verbs: [get]
   - apiGroups: [apps]
     resources: [daemonsets, deployments, statefulsets]
+    verbs: [patch, update]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [patch, update]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [patch, update]
+  - apiGroups: [autoscaling.k8s.io]
+    resources: [verticalpodautoscalers]
     verbs: [patch, update]
   - apiGroups: [""]
     resources: [pods/exec]

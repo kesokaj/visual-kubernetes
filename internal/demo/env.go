@@ -56,10 +56,12 @@ type PatchWorkloadEnvRequest struct {
 	Env             []PlainEnvVar `json:"env"`
 }
 
-// WorkloadStore reads and updates plain container env vars on apps/v1 workloads.
+// WorkloadStore reads and updates plain container env vars and replica counts on apps/v1 workloads.
 type WorkloadStore interface {
 	GetWorkloadEnv(ctx context.Context, ref model.Ref) (WorkloadEnvResponse, *StatusErr)
 	PatchWorkloadEnv(ctx context.Context, ref model.Ref, req PatchWorkloadEnvRequest) (WorkloadEnvResponse, *StatusErr)
+	GetWorkloadScale(ctx context.Context, ref model.Ref) (WorkloadScaleResponse, *StatusErr)
+	PatchWorkloadScale(ctx context.Context, ref model.Ref, req PatchWorkloadScaleRequest) (WorkloadScaleResponse, *StatusErr)
 }
 
 func (s *Server) handleGetWorkloadEnv(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +122,9 @@ func parseWorkloadRef(rawID string) (model.Ref, *StatusErr) {
 	}
 	if IsProtectedNamespace(ref.Namespace) {
 		return model.Ref{}, &StatusErr{Code: http.StatusForbidden, Msg: "protected namespace is refused in demo mode"}
+	}
+	if st := validateKubeObjectRef(ref); st != nil {
+		return model.Ref{}, st
 	}
 	return ref, nil
 }
